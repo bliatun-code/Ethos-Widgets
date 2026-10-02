@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026.5-v2 - development, 2026-10-02
+No release or tag. Physical-radio confirmation of RF optimization is pending.
+
+- Move RF geometry preparation out of paint into bounded wakeup slices.
+- Draw at most 48 minimum-preserving time bins per RF channel.
+- Retain the 180-point history, missing-data gaps, flight statistics and counter format.
+- Cache integer drawing primitives; release graph buffers when the log closes.
+- Refresh synthetic RSSI/VFR examples using 180 input points per channel.
+- Battery calculations, source assignments and native radio alarms are unchanged.
+
 ## 2026.4-v2 - development, 2026-10-02
 Not a tagged or published release. Physical X20RS/model testing is in progress.
 

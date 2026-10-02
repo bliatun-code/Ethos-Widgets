@@ -3,7 +3,7 @@
 ## VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS.
 
-**Development build: 2026.4-v2. Physical X20RS testing is in progress.
+**Development build: 2026.5-v2. Physical X20RS testing is in progress.
 No release or flight-ready certification has been published.**
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
@@ -62,10 +62,12 @@ Keep native telemetry alarms, failsafe and pre-flight checks enabled.
 An armed bench run can still qualify as a flight; use an appropriate airborne
 gate when possible. The widget's graph colors do not configure radio alarms.
 
-Known development limitation: dense RF histories can reach the ETHOS Lua
-instruction limit during drawing. The synthetic gallery uses 48 graph points;
-it does not validate the full production-history budget. Keep flight logging
-disabled for critical use until this is optimized and tested on the radio.
+RF rendering is bounded: up to 180 history points are reduced to at most
+48 minimum-preserving time bins per channel. Missing data breaks the trace;
+no averaging hides brief lows. Geometry is prepared over several wakeups,
+then paint draws cached primitives. Live traces can lag by a few seconds.
+The updated RF examples use 180 synthetic input points. Physical-radio
+validation is still required before treating this development build as ready.
 
 The first release will be prepared only after physical-radio/model testing.
 
