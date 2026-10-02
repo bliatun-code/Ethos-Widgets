@@ -9,6 +9,7 @@
 !/docs/*.md
 !/docs/images/
 !/docs/images/*.png
+!/docs/images/README.md
 !/scripts/
 !/scripts/VoltDeck/
 !/scripts/VoltDeck/main.lua

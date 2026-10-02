@@ -3,8 +3,10 @@
 ## VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS.
 
-**Development build: 2026.7-v2. Physical X20RS testing is in progress.
-No release or flight-ready certification has been published.**
+**VoltDeck 2026.8-v2: first public release. Physical X20RS/model testing
+passed, confirmed by the owner on 2026-10-02.**
+
+[Download VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) | [Release notes](https://github.com/bliatun-code/Ethos-Widgets/releases/tag/voltdeck-2026.8-v2)
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
 
@@ -44,16 +46,41 @@ The Ultimate AMR picture is documentation artwork, not a required widget asset.
 - Source-named RSSI/VFR readings, correct inactive units and per-slot visual profiles.
 - Readable Lua source. No bundled bytecode, fonts, sounds or runtime artwork.
 
-## Install the development source
+## Install VoltDeck
 
-1. Download [main.lua](scripts/VoltDeck/main.lua).
-2. Put it on the radio SD card as `scripts/VoltDeck/main.lua`.
+1. Download [VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) from the release assets, not GitHub's automatically generated source archive.
+2. Extract its `scripts/VoltDeck` folder onto the radio SD card so the final path is `scripts/VoltDeck/main.lua`.
 3. Restart ETHOS, create a full-screen widget area and select **VoltDeck**.
 4. Configure the sensors and battery capacity for that particular model.
 
-Do not rename `main.lua` and do not install the private simulator helpers.
+The named ZIP includes the widget folder, installation instructions, license
+and notices. No standalone Lua download is needed. Keep existing per-model
+`.cfg` and `.dat` files when upgrading. If an older `main.luac` remains in
+`scripts/VoltDeck`, remove only that generated file before restarting ETHOS
+so it can compile the installed source. Do not rename `main.lua` or install
+the private simulator helpers.
 Upgrading from the experimental Batt-key build requires selecting VoltDeck
 again and reselecting its telemetry sources.
+
+## Pack sessions and last flight
+
+Motor disarming pauses qualification/flight time but retains the same pack
+session, its statistics and RF history. Rearming does not count another flight.
+Only continuous loss of valid positive pack voltage for **Pack loss delay**
+ends the session (default 10 s; adjustable 3-120 s).
+The previous **End delay** setting retains its saved value under this new name.
+
+The last qualified log stays visible after disconnecting the aircraft and while
+the next flight is qualifying. It is replaced only when that next flight qualifies.
+These logs stay in RAM, not across a radio restart. RF graphs include motor pauses;
+the flight-time figure only accumulates while all qualification gates pass.
+An extended telemetry loss can resemble a disconnected battery; choose a longer
+delay, for example 30 s, if needed. No battery-swap sensor is implied.
+
+![Last qualified log remains while the next flight qualifies](docs/images/flight-next-qualifying.png)
+
+This synthetic simulator snapshot still shows count 1 and the previous flight
+while the next candidate qualifies. [See all four transitions](docs/Configuration.md#illustrated-pack-session-transitions).
 
 ## RF names and visual profiles
 
@@ -67,7 +94,9 @@ See the [RF explanation](docs/Configuration.md#11-vfr-graphs-instead-of-rssi).
 
 ## Safety and compatibility
 
-Development target: **FrSky X20RS, ETHOS 26.1.2**.
+Simulator target: **FrSky X20RS, ETHOS 26.1.2**.
+The owner reported that physical X20RS/model testing passed on 2026-10-02.
+This is a project test report, not universal compatibility or safety certification.
 Other radio/firmware combinations are not yet confirmed.
 Keep native telemetry alarms, failsafe and pre-flight checks enabled.
 An armed bench run can still qualify as a flight; use an appropriate airborne
@@ -77,10 +106,12 @@ RF rendering is bounded: up to 180 history points are reduced to at most
 48 minimum-preserving time bins per channel. Missing data breaks the trace;
 no averaging hides brief lows. Geometry is prepared over several wakeups,
 then paint draws cached primitives. Live traces can lag by a few seconds.
-The updated RF examples use 180 synthetic input points. Physical-radio
-validation is still required before treating this development build as ready.
+The updated RF examples use 180 synthetic input points. The owner separately
+confirmed that physical X20RS/model testing of 2026.8-v2 passed on 2026-10-02.
+Other hardware, firmware and model setups still need their own checks.
 
-The first release will be prepared only after physical-radio/model testing.
+The release packages the same 2026.8-v2 Lua source that the owner tested.
+Documentation and example-image updates do not change the widget code.
 
 ## License and publication boundary
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026.8-v2 - first public release, 2026-10-02
+The owner confirmed that physical X20RS/model testing passed on 2026-10-02.
+All 11 native ETHOS simulator transition stages and 14 focused Lua regression
+cases also passed with synthetic inputs. This is not universal compatibility
+or safety certification. The released Lua is unchanged from the tested build.
+
+- Publish the named VoltDeck-2026.8-v2.zip installation package.
+- Refresh the illustrated guides, RF examples and pack-session transition images.
+- Replace pending physical-test statements for the current version.
+
+- Motor ARM and optional airborne gates pause, rather than terminate, a pack session.
+- Resume the same qualification progress, count latch, peaks and RF history after rearming.
+- End a session only after continuously missing valid pack voltage for Pack loss delay.
+- Rename End delay to Pack loss delay; retain checked settings, saved delay and counter format.
+- Retain/display the last qualified log through aircraft power-off and the next qualification.
+- Replace the previous log only when the next flight qualifies; logs remain RAM-only.
+- Distinguish paused, pack-loss waiting and completed states in status/diagnostics.
+- Keep 180 history points per record and existing bounded RF drawing work; at most one
+  previous qualified record and one current candidate are retained.
+
+The entries below describe historical development status at the time.
+The current-version physical-test confirmation is recorded above.
+
 ## 2026.7-v2 - development, 2026-10-02
 No release or tag. Physical-radio confirmation of these fixes is pending.
 
