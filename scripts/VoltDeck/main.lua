@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.5-v2"
+local VERSION = "2026.6-v2"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -631,14 +631,15 @@ end
 local function switchOn(source)
     if not source then return false end
     local ok, value = pcall(function() return source:value() end)
-    return ok and (value == true or (finite(value) and value > 0))
+    if not ok then return false, nil end
+    return value == true or (finite(value) and value > 0), value
 end
 
 local function throttlePercent(widget)
     local value = sample(widget.throttleSource, "control")
     if value == nil then return nil end
     return clamp((value - widget.throttleMinimum) * 100
-        / math.max(1, widget.throttleMaximum - widget.throttleMinimum), 0, 100)
+        / math.max(1, widget.throttleMaximum - widget.throttleMinimum), 0, 100), value
 end
 
 local function counterRecord(session, bytes)
@@ -727,7 +728,42 @@ local function graphSample(flight, clock, rf1, rf2)
     return true
 end
 
+local function updateFlightDiagnostics(widget, data, key)
+    local session = widget.flightSession
+    local flight = session and session.current
+    data.logDuration = flight and math.floor(flight.duration * 10) / 10 or 0
+    data.logHighTime = flight and math.floor(flight.highTime * 10) / 10 or 0
+    data.logCounted = flight and flight.counted or false
+    data.logStoreError = session and session.error or nil
+    if not widget.logEnabled then data.logReason = "LOG DISABLED"
+    elseif widget.preview then data.logReason = "PREVIEW ENABLED"
+    elseif not key then data.logReason = "MODEL ID UNAVAILABLE"
+    elseif not widget.armSource then data.logReason = "SELECT ARM SOURCE"
+    elseif not widget.throttleSource then data.logReason = "SELECT THROTTLE SOURCE"
+    elseif data.throttlePercent == nil then data.logReason = "INVALID THROTTLE"
+    elseif not data.armed then data.logReason = "ARM CONDITION OFF"
+    elseif not data.airborne then data.logReason = "AIRBORNE GATE OFF"
+    elseif data.voltage == nil then data.logReason = "NO VALID PACK VOLTAGE"
+    elseif session and session.owner ~= widget then data.logReason = "ANOTHER WIDGET OWNS LOG"
+    elseif session and session.lockout then data.logReason = "DISARM TO REARM"
+    elseif data.logCounted then data.logReason = "FLIGHT COUNTED"
+    elseif data.logDuration < widget.flightMinimum then data.logReason = "WAITING FOR FLIGHT TIME"
+    elseif data.logHighTime < widget.highThrottleSeconds then data.logReason = "WAITING FOR HIGH THROTTLE"
+    else data.logReason = "READY" end
+    if widget.diagnosticsVisible then
+        data.throttleName = sourceDetails(widget.throttleSource, "Not selected", "")
+        data.armName = sourceDetails(widget.armSource, "Not selected", "")
+        data.gateName = sourceDetails(widget.airborneSource, "Not selected (passes)", "")
+    end
+end
+
 local function updateFlight(widget, data, clock, key)
+    if widget.logEnabled or widget.diagnosticsVisible then
+        data.throttlePercent, data.throttleRaw = throttlePercent(widget)
+        data.armed, data.armRaw = switchOn(widget.armSource)
+        if widget.airborneSource then data.airborne, data.gateRaw = switchOn(widget.airborneSource)
+        else data.airborne = true end
+    end
     if not widget.logEnabled or widget.preview or not key then
         if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then
             FLIGHT_SESSION.current, FLIGHT_SESSION.owner = nil, nil
@@ -745,9 +781,7 @@ local function updateFlight(widget, data, clock, key)
     session.owner = widget
     local dt = session.lastClock and clamp(clock - session.lastClock, 0, 1) or 0
     session.lastClock = clock
-    local armed = switchOn(widget.armSource)
-    local throttle = throttlePercent(widget)
-    local gate = not widget.airborneSource or switchOn(widget.airborneSource)
+    local armed, throttle, gate = data.armed, data.throttlePercent, data.airborne
     local ready = widget.armSource and throttle ~= nil and data.voltage ~= nil
     if not armed then session.lockout = false end
     if ready and armed and gate and not session.current and not session.lockout then
@@ -1013,6 +1047,7 @@ local function wakeup(widget)
     data.graph2 = sample(widget.graph2Source or widget.rssi2Source, "signal")
     if widget.preview then data.rpm, data.rpmDisplay, data.watts, data.cellVoltage = 8300, 8300, 414.96, 3.8 end
     updateFlight(widget, data, clock, key)
+    updateFlightDiagnostics(widget, data, key)
     local graphDirty = prepareFlightGraphs(widget, clock)
     if widget.bottomSource then
         data.bottomValue = sample(widget.bottomSource)
@@ -1341,12 +1376,63 @@ local function paintFlight(widget, colors, sx, sy)
         colors.accent, LEFT, nil, true)
 end
 
+local function paintDiagnostics(widget, colors, sx, sy)
+    local data = widget.data
+    text(24 * sx, 16 * sy, "FLIGHT DIAGNOSTICS", 550 * sx, 28 * sy, colors.foreground)
+    text(24 * sx, 51 * sy, data.modelName or "VoltDeck", 520 * sx, 20 * sy, colors.secondary, LEFT, nil, true)
+    text(776 * sx, 19 * sy, VERSION, 200 * sx, 19 * sy, colors.secondary, RIGHT, nil, true)
+    local tone = data.logCounted and COLORS.green or COLORS.yellow
+    if data.throttlePercent == nil or data.voltage == nil or not data.armed
+        or not data.airborne or not widget.logEnabled or widget.preview then tone = COLORS.red end
+    rect(24 * sx, 83 * sy, 752 * sx, 47 * sy, colors.track)
+    text(40 * sx, 94 * sy, data.logReason or "Waiting for sources", 720 * sx, 25 * sy, tone, LEFT, nil, true)
+    local labels = {"THROTTLE API RAW", "THROTTLE 0-100%", "CALIBRATION RAW"}
+    local values = {valueText(data.throttleRaw, 1), valueText(data.throttlePercent, 1) .. "%",
+        tostring(widget.throttleMinimum) .. " / " .. tostring(widget.throttleMaximum)}
+    local notes = {data.throttleName or "Not selected",
+        "High gate >= " .. tostring(widget.throttleThreshold) .. "%", "Low / high endpoints"}
+    for index = 1, 3 do
+        local x = (24 + (index - 1) * 254) * sx
+        text(x, 150 * sy, labels[index], 235 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
+        text(x, 177 * sy, values[index], 235 * sx, 36 * sy, colors.foreground)
+        text(x, 220 * sy, notes[index], 235 * sx, 16 * sy, colors.secondary, LEFT, nil, true)
+    end
+    rect(24 * sx, 249 * sy, 752 * sx, math.max(1, sy), colors.track)
+    local gates = {
+        {"ARM", data.armed, data.armName or "Not selected",
+            type(data.armRaw) == "boolean" and tostring(data.armRaw) or valueText(data.armRaw, 0)},
+        {"AIRBORNE GATE", data.airborne, data.gateName or "Not selected",
+            widget.airborneSource and (type(data.gateRaw) == "boolean" and tostring(data.gateRaw)
+                or valueText(data.gateRaw, 0)) or "Optional"},
+        {"PACK VOLTAGE", data.voltage ~= nil, "Positive voltage required", valueText(data.voltage, 1) .. " V"},
+    }
+    for index, gate in ipairs(gates) do
+        local x = (24 + (index - 1) * 254) * sx
+        text(x, 267 * sy, gate[1], 235 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
+        text(x, 294 * sy, (gate[2] and "PASS  " or "BLOCK  ") .. gate[4], 235 * sx, 27 * sy,
+            gate[2] and COLORS.green or COLORS.red, LEFT, nil, true)
+        text(x, 329 * sy, gate[3], 235 * sx, 15 * sy, colors.secondary, LEFT, nil, true)
+    end
+    text(24 * sx, 369 * sy, "QUALIFYING TIME", 350 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
+    text(425 * sx, 369 * sy, "HIGH THROTTLE TIME", 350 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
+    text(24 * sx, 393 * sy, valueText(data.logDuration, 1) .. " / " .. widget.flightMinimum .. " s",
+        350 * sx, 28 * sy, colors.foreground)
+    text(425 * sx, 393 * sy, valueText(data.logHighTime, 1) .. " / " .. widget.highThrottleSeconds .. " s",
+        350 * sx, 28 * sy, colors.foreground)
+    text(24 * sx, 436 * sy, data.logStoreError or ("COUNTER " .. tostring(data.logCount or 0)
+        .. "   " .. (widget.preview and "Preview: no logging" or "Live diagnostic, not an airborne detector")),
+        752 * sx, 16 * sy, data.logStoreError and COLORS.red or colors.secondary, LEFT, nil, true)
+    text(24 * sx, 463 * sy, "Widget menu: Dashboard / Flight log / Flight diagnostics",
+        752 * sx, 14 * sy, colors.accent, LEFT, nil, true)
+end
+
 local function paint(widget)
     local w, h = lcd.getWindowSize()
     widget.graphWidth, widget.graphHeight = w, h
     local sx, sy = w / 800, h / 480
     local colors, data = palette(widget), widget.data
     rect(0, 0, w, h, colors.background)
+    if widget.diagnosticsVisible then paintDiagnostics(widget, colors, sx, sy); return end
     if widget.logVisible then paintFlight(widget, colors, sx, sy); return end
     text(24 * sx, 9 * sy, "MODEL", 286 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
     text(24 * sx, 30 * sy, data.modelName or "VoltDeck", 292 * sx, 39 * sy,
@@ -1566,8 +1652,8 @@ local function configure(widget)
     sourceField("Arm switch", "armSource")
     sourceField("Throttle source", "throttleSource")
     sourceField("Airborne gate", "airborneSource")
-    numberField(widget, "Throttle low", "throttleMinimum", -2048, 2047, nil, 1)
-    numberField(widget, "Throttle high", "throttleMaximum", -2047, 2048, nil, 1)
+    numberField(widget, "Throttle low (raw)", "throttleMinimum", -2048, 2047, nil, 1)
+    numberField(widget, "Throttle high (raw)", "throttleMaximum", -2047, 2048, nil, 1)
     numberField(widget, "Flight minimum", "flightMinimum", 60, 3600, "s", 10)
     numberField(widget, "Throttle gate", "throttleThreshold", 10, 100, "%", 5)
     numberField(widget, "High throttle", "highThrottleSeconds", 1, 120, "s", 1)
@@ -1580,7 +1666,8 @@ local function configure(widget)
     numberField(widget, "VFR critical", "rfCriticalPercent", 0, 99, "%", 1)
     note("Arm + >=60s + >=50% throttle for >=5s by default.")
     note("Long armed bench runs can count: use airborne gate.")
-    note("Channels: -1024..1024; percent sources: set 0..100.")
+    note("Use actual API endpoints; UI % may use another scale.")
+    note("Widget menu / Flight diagnostics shows raw and gates.")
     note("Blank graph sources use RF1/RF2; VFR is % not RSSI.")
     note("Graph limits are visual, not radio alarm settings.")
     note("Only counter persists; last-flight graphs stay in RAM.")
@@ -1620,8 +1707,15 @@ end
 
 local function menu(widget)
     return {
-        {widget.logVisible and "Dashboard" or "Flight log", function()
-            widget.logVisible = not widget.logVisible; widget.refresh = true; lcd.invalidate()
+        {(widget.logVisible or widget.diagnosticsVisible) and "Dashboard" or "Flight log", function()
+            if widget.diagnosticsVisible then widget.logVisible = false
+            else widget.logVisible = not widget.logVisible end
+            widget.diagnosticsVisible, widget.refresh = false, true
+            lcd.invalidate()
+        end},
+        {"Flight diagnostics", function()
+            widget.diagnosticsVisible, widget.logVisible, widget.refresh = true, false, true
+            lcd.invalidate()
         end},
         {"Reset live peaks", function() widget.peakRPM, widget.peakWatts = nil, nil; changed(widget) end},
         {"Memory snapshot", function() memorySnapshot(widget) end},
@@ -1638,4 +1732,3 @@ local function init()
 end
 
 return {init = init}
-
