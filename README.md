@@ -3,7 +3,7 @@
 ## VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS.
 
-**Development build: 2026.6-v2. Physical X20RS testing is in progress.
+**Development build: 2026.7-v2. Physical X20RS testing is in progress.
 No release or flight-ready certification has been published.**
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
@@ -41,6 +41,7 @@ The Ultimate AMR picture is documentation artwork, not a required widget asset.
 - Measured RPM, a labelled KV estimate, Watts, average cell voltage or custom telemetry.
 - Numeric and retro LCD presentation; one, two or three supported metrics.
 - Optional per-model flight counter, session peaks and last-flight RF graphs.
+- Source-named RSSI/VFR readings, correct inactive units and per-slot visual profiles.
 - Readable Lua source. No bundled bytecode, fonts, sounds or runtime artwork.
 
 ## Install the development source
@@ -53,6 +54,16 @@ The Ultimate AMR picture is documentation artwork, not a required widget asset.
 Do not rename `main.lua` and do not install the private simulator helpers.
 Upgrading from the experimental Batt-key build requires selecting VoltDeck
 again and reselecting its telemetry sources.
+
+## RF names and visual profiles
+
+Names follow the selected source, for example **RSSI 2.4G** or **VFR 900M**.
+Dashboard and flight-log sources can differ. Presets use RSSI low/critical
+35/32 dB for ACCESS/TD/TW or 45/42 dB for ACCST.
+The widget's VFR visual profile is yellow at <=95% and red at <=50%;
+95% is an early-quality marker, not FrSky's native alarm threshold.
+Existing model limits migrate to **Custom** without being silently replaced.
+See the [RF explanation](docs/Configuration.md#11-vfr-graphs-instead-of-rssi).
 
 ## Safety and compatibility
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.7-v2 - development, 2026-10-02
+No release or tag. Physical-radio confirmation of these fixes is pending.
+
+- Normalize CATEGORY_NONE sources: an optional airborne gate selected as --- passes.
+- Handle CATEGORY_ALWAYS_ON without interpreting its numeric value as an OFF switch.
+- Retain arm, voltage, duration and high-throttle qualification requirements.
+- Name RF readings and graph traces from sources; retain % for inactive VFR.
+- Add independent ACCESS/TD/TW, ACCST and Custom visual profiles for each RF slot.
+- Label the 95% early / 50% low VFR visual profile separately from native alarms.
+- Preserve existing checked model settings and thresholds as Custom during migration.
+- Pin RF graph sources and labels per flight; retain bounded drawing/history budgets.
+- Refresh synthetic simulator screenshots and illustrated guides.
+
 ## 2026.6-v2 - development, 2026-10-02
 No release or tag. Physical-radio validation is still pending.
 
