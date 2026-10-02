@@ -18,7 +18,3 @@ Screenshots are native ETHOS simulator renders containing that example
 picture and synthetic values. They are documentation, not flight-test data.
 FrSky/ETHOS names and any visible vendor UI remain their owners' marks.
 
-## Reference project
-Zavionix Batt was a visual and functional reference during development.
-No Zavionix compiled Lua, images, sound files or manuals are distributed here.
-
