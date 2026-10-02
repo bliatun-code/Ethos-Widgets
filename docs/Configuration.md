@@ -9,11 +9,16 @@ or a promise of compatibility with another radio.**
 The gallery uses the actual widget drawing and calculation functions.
 A private simulator fixture supplies values and a fabricated last-flight
 record. It does not write an actual flight count. No fixture is distributed.
-This guide targets the development build while physical testing is in progress.
+The pack-transition series instead snapshots the normal flight callbacks
+with synthetic inputs and a RAM-only private test counter. Neither set is
+a recorded flight. This guide covers release 2026.8-v2. The owner separately
+confirmed physical X20RS/model testing passed on 2026-10-02; the pictures
+remain synthetic simulator examples, not evidence from that radio test.
 
 ## 1. Start with the model and battery
 
-Install `scripts/VoltDeck/main.lua`, select **VoltDeck** in a full-screen
+Download the named [VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) package,
+extract its `scripts/VoltDeck` folder onto the SD card, then select **VoltDeck** in a full-screen
 widget area and open its configuration. The visible model name comes from
 the active ETHOS model, not hard-coded text.
 
@@ -212,7 +217,9 @@ fixture; a red screenshot is not evidence of an audio test.
 ![Missing telemetry uses dashes and a neutral battery](images/telemetry-unavailable.png)
 
 Missing or rejected telemetry displays **--**, with neutral battery segments.
-RF1 and RF2 use **dB** as their missing-source fallback, not V.
+An inactive selected RSSI source keeps **dB**; an inactive VFR source keeps
+**%**. An unselected slot uses RF1/RF2 and dB as its fallback.
+Other units are rejected for RF readings rather than labelled dB.
 The transmitter battery and timer can still be valid while model telemetry
 is unavailable. Check source selection, source units and the live link;
 do not interpret missing consumed mAh as a full pack.
@@ -239,8 +246,9 @@ the example value itself is synthetic.
 
 The trace shows strong reception, brief dips below warning/critical limits,
 and a deliberate missing-data gap. The gap must not be read as a good link.
-The example uses **45 dB warning** and **42 dB critical** visual limits;
-these are not universal alarm settings for all equipment.
+The example explicitly selects the **ACCST** visual profile: **45 dB low**
+and **42 dB critical**. ACCESS/TD/TW use **35/32 dB** instead. Choose the
+profile for the protocol, not merely the frequency named by the sensor.
 
 ## 11. VFR graphs instead of RSSI
 
@@ -250,17 +258,51 @@ Select real VFR sources in **Flight log / RF graph 1 / RF graph 2** when
 those sources are available. Their source units must be **%**.
 The dashboard RF sources and the graph sources can be different.
 
-The example uses **95% warning** and **90% critical**, so degraded
-frame reception is easy to see. Adjust visual thresholds to the equipment
-and keep the radio's native link alarms. The source's units choose the
-graph interpretation; a percentage is not an RSSI dB reading.
+The example uses the widget's **95% early-quality / 50% low** visual profile.
+Yellow highlights deteriorating valid-frame reception; red marks the low
+threshold. **95% is our early visual marker, not a FrSky alarm default.**
+FrSky documents a 50% low-VFR alarm, not a separate critical-VFR alarm.
+
+| RF signals / Profile | RSSI yellow / red | VFR yellow / red |
+|---|---|---|
+| ACCESS / TD / TW | <=35 / <=32 dB | <=95 / <=50% |
+| ACCST | <=45 / <=42 dB | <=95 / <=50% |
+| Custom | Configured separately per RF slot | Configured separately per RF slot |
+
+Each slot has a profile and four custom limits under **RF signals**.
+Editing a limit automatically selects **Custom** for that slot.
+Presets ignore retained custom values; selecting Custom restores their use.
+Pre-upgrade model limits are preserved as Custom, including the older 95/90
+example. Choose a preset explicitly to use the new 95/50 profile.
+
+The source's name and unit appear on the dashboard and graph.
+Frequency alone cannot identify ACCESS, TD, TW or ACCST.
+
+![Inactive source names and units](images/rf-inactive-units.png)
+
+This cropped synthetic dashboard example retains RSSI 2.4G in dB and
+VFR 900M in %, even though both readings are unavailable. Dashes are
+missing data, not zero signal.
+VFR uses a 0-100% scale; RSSI uses the configurable dB scale.
+
+VFR measures valid-frame percentage and is generally the more direct
+control-link quality indicator; RSSI remains useful for received strength.
+If available, **Rx VFR** combines valid frames across bands and is useful as
+an overall link-quality indicator. A poor individual band need not mean an
+equally poor combined link. Neither graph guarantees a safe connection.
+See [FrSky's telemetry manual](https://ethos-doc.frsky-rc.com/model-setup/telemetry/).
+
+Graph sources can differ from dashboard sources. A flight pins its sources,
+names and units at start, so source changes do not mix different sensors
+in one trace. Visual profiles remain adjustable. Keep native alarms and failsafe.
 
 RF rendering is bounded: up to 180 history points are reduced to at most
 48 minimum-preserving time bins per channel. Missing data breaks the trace;
 no averaging hides brief lows. Geometry is prepared over several wakeups,
 then paint draws cached primitives. Live traces can lag by a few seconds.
-The updated RF examples use 180 synthetic input points. Physical-radio
-validation is still required before treating this development build as ready.
+The updated RF examples use 180 synthetic input points. The owner separately
+confirmed that physical X20RS/model testing of 2026.8-v2 passed on 2026-10-02.
+Other hardware, firmware and model setups still need their own checks.
 
 ## 12. Configure flight detection for the actual model
 
@@ -274,7 +316,7 @@ validation is still required before treating this development build as ready.
 | Flight minimum | 60 s |
 | Throttle gate | 50% |
 | High throttle | 5 s cumulative |
-| End delay | 10 s |
+| Pack loss delay | 10 s (continuous missing pack voltage) |
 | RF graph 1 / 2 | RSSI or VFR sources for that model |
 
 Set **Throttle low (raw) / high (raw)** to the actual `source:value()`
@@ -287,20 +329,71 @@ the time/throttle gates. The optional airborne gate can improve filtering.
 A long armed bench test can still qualify: this logic does not prove that
 the aircraft is flying. Disable logging during bench work when appropriate.
 
+### One session per battery connection
+
+Motor ARM is a safety/qualification condition, not a session reset. Disarming for
+inspection or touch-and-go pauses the accumulated flight and high-throttle times.
+Rearming the same connected pack resumes the same record and cannot increment
+its counter twice. The optional airborne gate also pauses rather than clears it.
+RF history continues across these motor pauses; its elapsed axis includes them.
+
+Only continuously missing, invalid or non-positive pack voltage for **Pack loss
+delay** ends that session. The default is 10 s (adjustable 3-120 s); the old
+**End delay** value is preserved under the new label. Returning voltage before
+the timeout cancels the loss timer. Ordinary positive voltage sag is not a reset.
+A prolonged RF/telemetry loss can resemble disconnecting the pack, while a swap
+shorter than the delay may be missed. Use a longer delay, e.g. 30 s, when appropriate.
+
+The last qualified flight stays visible after the aircraft is switched off.
+While the next flight qualifies, the log is labelled **LAST FLIGHT LOG** and
+still shows the previous statistics/graphs. Only successful new qualification
+replaces it. A failed candidate does not erase the last qualified record.
+Radio restart still clears RAM-only logs. Resetting the persistent counter
+requires logging enabled, motor disarmed and the pack session ended after disconnect.
+
+### Illustrated pack-session transitions
+
+These four native simulator screens are snapshots from the synthetic transition
+exercise, not recorded flights. The private test counter stays in RAM.
+
+| Motor disarmed, same pack | Pack disconnected past the delay |
+|---|---|
+| ![Qualified session paused](images/flight-paused.png) | ![Last qualified log retained](images/flight-last-retained.png) |
+| Count 1 and the existing statistics remain. | LAST FLIGHT LOG remains available with count 1. |
+
+| Next candidate is qualifying | Next candidate has qualified |
+|---|---|
+| ![Previous log while next flight qualifies](images/flight-next-qualifying.png) | ![New qualified flight replaces previous log](images/flight-next-qualified.png) |
+| Previous flight statistics remain; count is still 1. | Count becomes 2; only now does the new record replace it. |
+
+The exercise also checked an aborted next candidate, brief voltage loss,
+positive voltage sag and an airborne-gate pause. None erased or recounted
+the same qualified pack session. These are simulator checks with synthetic
+inputs, not a substitute for physical-radio testing or proof of airborne flight.
+
 ### Flight diagnostics
 
 Choose **Flight diagnostics** in the widget menu. It shows actual throttle
 API raw value, normalized 0-100% throttle, calibration endpoints, arm and
 optional airborne gates, valid pack voltage and qualification progress.
-The status banner identifies the first blocking condition.
+The status banner identifies blocking conditions, paused sessions, continuous
+pack-loss progress and a completed session whose last log has been retained.
 
-An unselected arm source blocks logging; an unselected airborne gate passes.
+An unselected arm source blocks logging. **Airborne gate = ---** passes,
+even when ETHOS represents it as a Source object rather than nil.
+**Always on** also passes; a selected physical/logic condition must be ON.
+These choices do not bypass arm, voltage or time/throttle requirements.
 Diagnostics can be opened with logging disabled and do not change sources,
 settings or native safety functions. Mid-stick means 50% normalized throttle
 even when the channel monitor shows 0%. Keep the motor safely disabled when
 checking endpoints, and disable logging for bench tests that should not count.
 
-![Flight diagnostics in ETHOS](images/flight-diagnostics.png)
+![Optional airborne gate passing in ETHOS](images/flight-diagnostics.png)
+
+![Always-on airborne gate passing in ETHOS](images/flight-diagnostics-always-on.png)
+
+These diagnostic illustrations use synthetic pack/arm/throttle readings;
+the gate selections come from ETHOS itself. They do not represent a flight.
 
 Only the model's counter persists. Last-flight statistics and graphs are
 kept in RAM and can disappear when the radio is turned off. History is
@@ -338,4 +431,5 @@ backgrounds. The artwork is documentation-only; see [NOTICE](../NOTICE.md).
 6. Perform safe bench checks before any flight and keep native alarms/failsafe.
 
 These screenshots verify presentation, not real-world safety or flight
-qualification. Report physical-radio issues before the first release.
+qualification. Physical X20RS/model testing of this release was reported
+passed by the owner. Check your own model setup and report issues for future updates.

@@ -2,18 +2,27 @@
 
 [Alle bilder og detaljer](Configuration.md) | [Installasjon](VoltDeck.md)
 
-**Utviklingsversjon 2026.6-v2. Bildene er laget i ETHOS-simulatoren med
-syntetiske data, ikke fra en virkelig flyging. Release avventer radiotest.**
+**VoltDeck 2026.8-v2: første offentlige release. Test på fysisk X20RS med
+modell er bestått, bekreftet av eieren 2026-10-02.**
+
+Bildene er fortsatt laget i ETHOS-simulatoren med syntetiske data, ikke fra
+en virkelig flyging. Testbekreftelsen gjelder eierens oppsett, ikke alle radioer.
 
 ![LCD RPM og Watt](images/rpm-watts-lcd.png)
 
 ## Installasjon og grunnoppsett
 
-1. Legg Lua-filen i `scripts/VoltDeck/main.lua` på SD-kortet.
-2. Velg **VoltDeck** i et fullskjerms widgetfelt.
-3. Velg telemetrikildene for akkurat denne modellen.
-4. Sett **Battery / Remaining from = Consumed mAh**, korrekt kapasitet og celletall.
-5. Nullstill forbruksteller når du kobler til et nytt eller oppladet batteri.
+1. Last ned [VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) fra release-siden.
+2. Pakk ut `scripts/VoltDeck` til SD-kortet, slik at filen ligger som `scripts/VoltDeck/main.lua`.
+3. Start ETHOS på nytt og velg **VoltDeck** i et fullskjerms widgetfelt.
+4. Velg telemetrikildene for akkurat denne modellen.
+5. Sett **Battery / Remaining from = Consumed mAh**, korrekt kapasitet og celletall.
+6. Nullstill forbruksteller når du kobler til et nytt eller oppladet batteri.
+
+Velg den navngitte widgetpakken, ikke GitHubs automatiske kildekodearkiv.
+Ved oppgradering beholder du modellens `.cfg`- og `.dat`-filer. Fjern bare
+eventuell gammel `scripts/VoltDeck/main.luac` før omstart, slik at radioen
+kompilerer den nye Lua-kilden. ZIP-pakken inneholder ingen bytekode.
 
 Modellnavnet hentes fra valgt modell. **Appearance / Image source =
 Selected model** bruker modellbildet som allerede er valgt i radioen.
@@ -97,21 +106,113 @@ ikke bare prosentene i kanalmonitoren. Kilden kan bruke -1024/+1024,
 -100/+100 eller 0/100; bruk endepunktene for akkurat den kilden. En passende **Airborne gate**
 kan gi bedre filtrering, men en lang benktest kan likevel bli telt.
 
+### En økt per batteritilkobling
+
+Motor-ARM er et sikkerhets-/kvalifiseringsvilkår, ikke en nullstilling av økten.
+Dearming ved inspeksjon eller touch-and-go pauser opptjent flytid og tid over
+gassgrensen. Når samme pakke armeres igjen, fortsetter samme logg og telling;
+en økt kan bare øke telleren én gang. Airborne gate av pauser også, uten sletting.
+
+Økten avsluttes først når gyldig, positiv pakkespenning mangler sammenhengende
+i **Pack loss delay**: standard 10 sekunder, valgbart fra 3 til 120 sekunder.
+Det tidligere **End delay** beholder sin lagrede verdi, men får nytt navn og
+gjelder nå bare spenningsbortfall. Kortere bortfall nullstiller ikke økten.
+Vanlig spenningsfall under belastning, med fortsatt positiv verdi, avslutter
+ikke økten. Langt RF-/telemetribortfall kan ligne frakoblet batteri; velg gjerne
+30 sekunder ved behov. Et batteribytte kortere enn forsinkelsen kan bli oversett.
+
+Siste kvalifiserte flylogg vises fortsatt etter at flyet slås av, og mens neste
+flyging kvalifiseres. **LAST FLIGHT LOG** betyr at statistikken og grafene tilhører
+forrige kvalifiserte flyging. Først når den nye flygingen kvalifiserer, erstattes
+loggen. En kandidat som ikke kvalifiserer, sletter ikke forrige logg.
+Omstart av radioen kan fortsatt tømme loggene; bare telleren er permanent.
+
+RF-grafens tidsakse inkluderer motorpausene, mens flytiden bare øker når
+arm-, gate- og telemetrivillkårene passerer. For å nullstille telleren må logging
+være aktivert, motoren dearmert og pakkeøkten avsluttet etter frakobling.
+Widgeten endrer ikke motorstyring, failsafe eller radioens sikkerhetsfunksjoner.
+
+### Bilder av overgangene
+
+Bildene nedenfor er tatt i ETHOS under en syntetisk overgangstest.
+Testtelleren ligger bare i RAM; tallene 1 og 2 er ikke ekte flyginger.
+
+| Motor dearmert, samme batteri | Batteriet frakoblet lenge nok |
+|---|---|
+| ![Motorpause beholder samme flyging](images/flight-paused.png) | ![Siste logg beholdes etter frakobling](images/flight-last-retained.png) |
+| Teller 1 og statistikken beholdes. | LAST FLIGHT LOG viser fortsatt forrige logg. |
+
+| Neste flyging kvalifiseres | Neste flyging har kvalifisert |
+|---|---|
+| ![Forrige logg under ny kvalifisering](images/flight-next-qualifying.png) | ![Ny kvalifisert flyging erstatter forrige](images/flight-next-qualified.png) |
+| Forrige logg vises, og telleren er fortsatt 1. | Telleren blir 2, og først nå erstattes loggen. |
+
+Testen omfattet også avbrutt neste kandidat, kort spenningsbortfall,
+positiv voltage sag og pause fra airborne gate. Ingen av disse slettet
+forrige kvalifiserte logg eller telte samme batteri på nytt. Simulatorprøven
+bruker syntetiske innganger og erstatter ikke testing på fysisk radio.
+
+### RF-kilder, enheter og signalprofiler
+
+Navnet kommer fra valgt kilde, for eksempel **RSSI 2.4G**, **VFR 900M**
+eller **Rx VFR**. En inaktiv RSSI-kilde beholder dB, og en inaktiv VFR-kilde
+beholder %. Hovedskjermen og flyloggen kan velge forskjellige kilder.
+Frekvensnavnet brukes ikke til å gjette protokoll.
+
+![Inaktive RF-kilder beholder riktige enheter](images/rf-inactive-units.png)
+
+Dette utsnittet bruker syntetiske, inaktive kilder: RSSI 2.4G beholder dB,
+og VFR 900M beholder %. Strekene betyr manglende data, ikke null signal.
+
+Under **RF signals** velger du profil separat for RF1 og RF2:
+
+| Profil | RSSI gul / rød | VFR gul / rød |
+|---|---|---|
+| ACCESS / TD / TW | <=35 / <=32 dB | <=95 / <=50% |
+| ACCST | <=45 / <=42 dB | <=95 / <=50% |
+| Custom | Egne grenser for hver RF-plass | Egne grenser for hver RF-plass |
+
+VFR-skalaen er alltid 0-100%; RSSI har en justerbar dB-skala.
+95% er widgetens tidlige, visuelle kvalitetsmarkering, ikke FrSkys
+standardalarm. FrSky oppgir lav VFR ved 50%, men ikke en egen kritisk
+VFR-grense. Fargene endrer aldri radioens egne alarmer.
+
+VFR sier hvor stor andel rammer som er gyldige og er vanligvis et bedre
+mål på kontrollforbindelsen enn RSSI alene. RSSI er fortsatt nyttig for
+mottatt signalstyrke. **Rx VFR**, når tilgjengelig, kombinerer gyldige
+rammer fra båndene og er nyttig som samlet kvalitetsmål. Ett svakt bånd
+betyr ikke nødvendigvis at samlet forbindelse er like svak.
+Kilde: [FrSkys telemetriveiledning](https://ethos-doc.frsky-rc.com/model-setup/telemetry/).
+
+Eksisterende grenser beholdes som **Custom**, også eldre 95/90.
+Velg en profil selv hvis du ønsker nye grenser. Endrer du en grenseverdi,
+velges Custom automatisk for den RF-plassen. En flyging beholder grafkildene,
+navnene og enhetene som var valgt ved start; senere kildevalg blandes
+ikke inn i samme kurve.
+
 ### Diagnose flytelling
 
 Velg **Flight diagnostics** i widgetmenyen. Visningen viser faktisk
 throttle-råverdi, beregnet gass (0-100%), kalibreringsområdet, arm-betingelse,
 valgfri airborne gate og gyldig pakkespenning. **Qualifying time** og
 **High throttle time** viser opptjente sekunder mot kravene. Statuslinjen
-forteller hvilket vilkår som først blokkerer tellingen.
+viser også pauset økt, sekunder med sammenhengende pakkebortfall og at
+siste logg er beholdt etter avsluttet økt.
 
-Et uvalgt arm-signal blokkerer logging; en uvalgt airborne gate slipper
-igjennom. Diagnosen kan åpnes med logging deaktivert og endrer ikke kilder,
+Et uvalgt arm-signal blokkerer logging. **Airborne gate = ---** slipper
+igjennom, også når ETHOS returnerer et kildeobjekt for valget.
+**Always on** slipper også igjennom. En valgt bryter eller logisk betingelse
+må være aktiv. Ingen av valgene omgår arm-, spennings-, tids- eller gasskravene. Diagnosen kan åpnes med logging deaktivert og endrer ikke kilder,
 innstillinger eller sikkerhetsfunksjoner. Midtstilling tilsvarer 50% gass
 selv om kanalmonitoren viser 0%. Hold motoren sikkert deaktivert ved
 kontroll av endepunkter, og slå av logging under benktester som ikke skal telles.
 
-![Flydiagnose i ETHOS-simulatoren](images/flight-diagnostics.png)
+![Valgfri airborne gate slipper gjennom](images/flight-diagnostics.png)
+
+![Always on slipper gjennom](images/flight-diagnostics-always-on.png)
+
+Diagnosebildene bruker syntetisk pakkespenning, arm og gass;
+gate-valgene kommer fra ETHOS selv. Bildene viser ikke en ekte flyging.
 
 Velg RSSI-kilder for dB-grafer eller VFR-kilder for prosentgrafer.
 Gul/rød grafmerking er visuelle grenser, ikke radioens telemetrialarmer.
@@ -123,7 +224,8 @@ RF-tegningen er begrenset: opptil 180 historikkpunkter blir til maksimalt
 manglende data bryter kurven. Beregningen fordeles over flere oppdateringer;
 selve tegningen bruker ferdige koordinater. Grafen kan ligge noen sekunder
 etter sanntid. De nye RF-bildene bruker 180 syntetiske inngangspunkter.
-Optimaliseringen trenger fortsatt bekreftelse på fysisk radio før release.
+Radiotest av 2026.8-v2 er nå bekreftet bestått av eieren. Bildene er
+simulator-eksempler; andre radioer, firmwareversjoner og modelloppsett må testes separat.
 
 ## Modellbilder og sikkerhet
 
@@ -136,5 +238,6 @@ av modellfil, begge innstillingsfiler og tellerfiler. Ikke bruk en annen
 modells lagrede filer som en ferdig konfigurasjon.
 
 Behold radioens egne alarmer, failsafe og sikkerhetskontroller.
-Bildene dokumenterer utseendet; radiotesten din avgjør hva som må rettes
-før vi lager en release.
+Bildene dokumenterer utseendet med syntetiske data. Testen på fysisk X20RS
+med modell er bekreftet bestått for 2026.8-v2. Dette er ikke en generell
+sikkerhetssertifisering; behold radioens egne alarmer og sjekk eget oppsett.
