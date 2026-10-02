@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.6-v2"
+local VERSION = "2026.7-v2"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -56,7 +56,9 @@ local SETTINGS = {
     "wattMaximum", "cellMaximum", "logEnabled", "flightMinimum", "throttleThreshold",
     "highThrottleSeconds", "endDelay", "throttleMinimum", "throttleMaximum",
     "rfWarnDB", "rfCriticalDB", "rfWarnPercent", "rfCriticalPercent",
+    "rf1Profile", "rf2Profile", "rf2WarnDB", "rf2CriticalDB", "rf2WarnPercent", "rf2CriticalPercent",
 }
+local LEGACY_SETTINGS_COUNT = #SETTINGS - 6
 
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -71,9 +73,17 @@ local function finite(value)
         and value ~= math.huge and value ~= -math.huge
 end
 
+-- The "---" selection may be a real ETHOS Source object, not nil.
+local function selectedSource(source)
+    if source == nil or source == false or source == "" then return nil end
+    local ok, category = pcall(function() return source:category() end)
+    if ok and CATEGORY_NONE ~= nil and category == CATEGORY_NONE then return nil, category end
+    return source, ok and category or nil
+end
+
 local function getSource(parameters)
     local ok, source = pcall(system.getSource, parameters)
-    if ok then return source end
+    if ok then return selectedSource(source) end
 end
 
 local function restoreSource(value)
@@ -82,7 +92,7 @@ local function restoreSource(value)
     elseif type(value) == "number" then
         return getSource({category = CATEGORY_TELEMETRY_SENSOR, appId = value})
     elseif type(value) == "userdata" or type(value) == "table" then
-        return value
+        return selectedSource(value)
     end
 end
 
@@ -140,7 +150,9 @@ local function create()
         logEnabled = false, flightMinimum = 60, throttleThreshold = 50,
         highThrottleSeconds = 5, endDelay = 10,
         throttleMinimum = -1024, throttleMaximum = 1024,
-        rfWarnDB = 45, rfCriticalDB = 42, rfWarnPercent = 95, rfCriticalPercent = 90,
+        rfWarnDB = 35, rfCriticalDB = 32, rfWarnPercent = 95, rfCriticalPercent = 50,
+        rf1Profile = 1, rf2Profile = 1,
+        rf2WarnDB = 35, rf2CriticalDB = 32, rf2WarnPercent = 95, rf2CriticalPercent = 50,
         timerSource = getSource({category = CATEGORY_TIMER, member = 0}),
         builtinTx = getSource({category = CATEGORY_SYSTEM,
             member = SYSTEM_MAIN_VOLTAGE or MAIN_VOLTAGE}),
@@ -203,7 +215,7 @@ local function configRecord(key, bytes)
     sequence = tonumber(sequence)
     if identity ~= identityHex(key) or not sequence or sequence > 1000000000 then return nil end
     local values, count = {}, 0
-    for name, kind, value in payload:gmatch("([%a]+)=([nbs]):([^\n]*)\n") do
+    for name, kind, value in payload:gmatch("([%a][%w]*)=([nbs]):([^\n]*)\n") do
         if values[name] ~= nil then return nil end
         if kind == "n" then
             value = tonumber(value)
@@ -217,8 +229,15 @@ local function configRecord(key, bytes)
         end
         values[name], count = value, count + 1
     end
-    if count ~= #SETTINGS then return nil end
-    for _, name in ipairs(SETTINGS) do if values[name] == nil then return nil end end
+    if count ~= #SETTINGS and count ~= LEGACY_SETTINGS_COUNT then return nil end
+    local required = count == LEGACY_SETTINGS_COUNT and LEGACY_SETTINGS_COUNT or #SETTINGS
+    for index = 1, required do if values[SETTINGS[index]] == nil then return nil end end
+    if count == LEGACY_SETTINGS_COUNT then
+        -- Preserve pre-upgrade limits; a new preset requires explicit selection.
+        values.rf1Profile, values.rf2Profile = 3, 3
+        values.rf2WarnDB, values.rf2CriticalDB = values.rfWarnDB, values.rfCriticalDB
+        values.rf2WarnPercent, values.rf2CriticalPercent = values.rfWarnPercent, values.rfCriticalPercent
+    end
     return {values = values, sequence = sequence, payload = payload}
 end
 
@@ -382,15 +401,24 @@ local function read(widget)
         {"cellMaximum", 440, 200, 500}, {"flightMinimum", 60, 60, 3600},
         {"throttleThreshold", 50, 10, 100}, {"highThrottleSeconds", 5, 1, 120},
         {"endDelay", 10, 3, 120}, {"throttleMinimum", -1024, -2048, 2047},
-        {"throttleMaximum", 1024, -2047, 2048}, {"rfWarnDB", 45, -149, 200},
-        {"rfCriticalDB", 42, -150, 199}, {"rfWarnPercent", 95, 1, 100},
-        {"rfCriticalPercent", 90, 0, 99},
+        {"throttleMaximum", 1024, -2047, 2048}, {"rfWarnDB", 35, -149, 200},
+        {"rfCriticalDB", 32, -150, 199}, {"rfWarnPercent", 95, 1, 100},
+        {"rfCriticalPercent", 50, 0, 99},
     }
     for _, option in ipairs(options) do widget[option[1]] = numberSetting(option[1], option[2], option[3], option[4]) end
+    local profileDefault = settingRead("rfWarnDB") ~= nil and 3 or 1
+    widget.rf1Profile = numberSetting("rf1Profile", profileDefault, 1, 3)
+    widget.rf2Profile = numberSetting("rf2Profile", profileDefault, 1, 3)
+    widget.rf2WarnDB = numberSetting("rf2WarnDB", widget.rfWarnDB, -149, 200)
+    widget.rf2CriticalDB = numberSetting("rf2CriticalDB", widget.rfCriticalDB, -150, 199)
+    widget.rf2WarnPercent = numberSetting("rf2WarnPercent", widget.rfWarnPercent, 1, 100)
+    widget.rf2CriticalPercent = numberSetting("rf2CriticalPercent", widget.rfCriticalPercent, 0, 99)
     widget.logEnabled = settingRead("logEnabled") == true
     if widget.throttleMaximum <= widget.throttleMinimum then widget.throttleMaximum = widget.throttleMinimum + 1 end
     if widget.rfCriticalDB > widget.rfWarnDB then widget.rfCriticalDB = widget.rfWarnDB end
     if widget.rfCriticalPercent > widget.rfWarnPercent then widget.rfCriticalPercent = widget.rfWarnPercent end
+    widget.rf2CriticalDB = math.min(widget.rf2CriticalDB, widget.rf2WarnDB)
+    widget.rf2CriticalPercent = math.min(widget.rf2CriticalPercent, widget.rf2WarnPercent)
     settingValues = nil
     widget.imageDirty, widget.fontDirty = true, true
     changed(widget)
@@ -419,7 +447,7 @@ local function sample(source, quantity)
         local controlValid = quantity == "control" and category ~= CATEGORY_TELEMETRY_SENSOR
         if not timerValid and not controlValid then return nil end
     end
-    if quantity == "signal" and unit ~= UNIT_DB and unit ~= UNIT_PERCENT and unit ~= UNIT_NONE then return nil end
+    if quantity == "signal" and unit ~= UNIT_DB and unit ~= UNIT_PERCENT then return nil end
     if quantity == "rpm" and unit ~= UNIT_RPM and unit ~= UNIT_NONE then return nil end
     if quantity == "voltage" and unit ~= UNIT_VOLT and unit ~= UNIT_MILLIVOLT and unit ~= UNIT_NONE then return nil end
     if quantity == "current" and unit ~= UNIT_AMPERE and unit ~= UNIT_MILLIAMPERE and unit ~= UNIT_NONE then return nil end
@@ -446,6 +474,36 @@ local function sourceDetails(source, fallbackName, fallbackUnit)
         end
     end
     return fallbackName, fallbackUnit, 0
+end
+
+-- Source names and canonical units remain available without a live reading.
+local function rfDetails(source, fallbackName)
+    source = selectedSource(source)
+    if not source then return fallbackName, "dB" end
+    local nameOK, name = pcall(function() return source:name() end)
+    local unitOK, unit = pcall(function() return source:unit() end)
+    local label = nameOK and type(name) == "string" and name ~= "" and name or fallbackName
+    return label, unitOK and (unit == UNIT_PERCENT and "%" or unit == UNIT_DB and "dB") or "?"
+end
+
+-- Visual profiles only; a frequency label cannot identify the radio protocol.
+local function rfLimits(widget, unit, channel)
+    local second = channel == 2
+    local profile = second and widget.rf2Profile or widget.rf1Profile
+    local warning, critical
+    if unit == "%" then
+        warning = second and widget.rf2WarnPercent or widget.rfWarnPercent
+        critical = second and widget.rf2CriticalPercent or widget.rfCriticalPercent
+        if profile ~= 3 then warning, critical = 95, 50 end
+    else
+        warning = second and widget.rf2WarnDB or widget.rfWarnDB
+        critical = second and widget.rf2CriticalDB or widget.rfCriticalDB
+        if profile == 1 then warning, critical = 35, 32
+        elseif profile == 2 then warning, critical = 45, 42 end
+    end
+    return unit == "%" and 0 or widget.signalMinimum,
+        unit == "%" and 100 or widget.signalMaximum, warning, critical,
+        profile == 1 and "ACCESS/TD/TW" or profile == 2 and "ACCST" or "Custom"
 end
 
 -- ETHOS uses io.read(handle, byteCount), not the standard Lua file:read().
@@ -629,9 +687,14 @@ end
 
 -- Computed values are read-only: never create or change the user's sensors/mixes.
 local function switchOn(source)
+    local category
+    source, category = selectedSource(source)
     if not source then return false end
+    -- Always on is unconditional, not a positive analog value.
+    if CATEGORY_ALWAYS_ON ~= nil and category == CATEGORY_ALWAYS_ON then return true, true end
     local ok, value = pcall(function() return source:value() end)
     if not ok then return false, nil end
+    -- Generic state() is validity for some sources: valid does not imply ON.
     return value == true or (finite(value) and value > 0), value
 end
 
@@ -738,8 +801,8 @@ local function updateFlightDiagnostics(widget, data, key)
     if not widget.logEnabled then data.logReason = "LOG DISABLED"
     elseif widget.preview then data.logReason = "PREVIEW ENABLED"
     elseif not key then data.logReason = "MODEL ID UNAVAILABLE"
-    elseif not widget.armSource then data.logReason = "SELECT ARM SOURCE"
-    elseif not widget.throttleSource then data.logReason = "SELECT THROTTLE SOURCE"
+    elseif not selectedSource(widget.armSource) then data.logReason = "SELECT ARM SOURCE"
+    elseif not selectedSource(widget.throttleSource) then data.logReason = "SELECT THROTTLE SOURCE"
     elseif data.throttlePercent == nil then data.logReason = "INVALID THROTTLE"
     elseif not data.armed then data.logReason = "ARM CONDITION OFF"
     elseif not data.airborne then data.logReason = "AIRBORNE GATE OFF"
@@ -753,7 +816,7 @@ local function updateFlightDiagnostics(widget, data, key)
     if widget.diagnosticsVisible then
         data.throttleName = sourceDetails(widget.throttleSource, "Not selected", "")
         data.armName = sourceDetails(widget.armSource, "Not selected", "")
-        data.gateName = sourceDetails(widget.airborneSource, "Not selected (passes)", "")
+        data.gateName = sourceDetails(selectedSource(widget.airborneSource), "Not selected (passes)", "")
     end
 end
 
@@ -761,8 +824,10 @@ local function updateFlight(widget, data, clock, key)
     if widget.logEnabled or widget.diagnosticsVisible then
         data.throttlePercent, data.throttleRaw = throttlePercent(widget)
         data.armed, data.armRaw = switchOn(widget.armSource)
-        if widget.airborneSource then data.airborne, data.gateRaw = switchOn(widget.airborneSource)
-        else data.airborne = true end
+        local gateSource = selectedSource(widget.airborneSource)
+        data.gateOptional = gateSource == nil
+        if gateSource then data.airborne, data.gateRaw = switchOn(gateSource)
+        else data.airborne, data.gateRaw = true, nil end
     end
     if not widget.logEnabled or widget.preview or not key then
         if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then
@@ -782,13 +847,16 @@ local function updateFlight(widget, data, clock, key)
     local dt = session.lastClock and clamp(clock - session.lastClock, 0, 1) or 0
     session.lastClock = clock
     local armed, throttle, gate = data.armed, data.throttlePercent, data.airborne
-    local ready = widget.armSource and throttle ~= nil and data.voltage ~= nil
+    local ready = selectedSource(widget.armSource) ~= nil and throttle ~= nil and data.voltage ~= nil
     if not armed then session.lockout = false end
     if ready and armed and gate and not session.current and not session.lockout then
-        local _, unit1 = sourceDetails(widget.graph1Source or widget.rssi1Source, "RF1", "dB")
-        local _, unit2 = sourceDetails(widget.graph2Source or widget.rssi2Source, "RF2", "dB")
+        local source1 = selectedSource(widget.graph1Source) or selectedSource(widget.rssi1Source)
+        local source2 = selectedSource(widget.graph2Source) or selectedSource(widget.rssi2Source)
+        local name1, unit1 = rfDetails(source1, "RF1")
+        local name2, unit2 = rfDetails(source2, "RF2")
         session.current = {started = clock, duration = 0, highTime = 0, modelName = data.modelName,
-            unit1 = unit1, unit2 = unit2, counted = false,
+            source1 = source1, source2 = source2, graphSourcesPinned = true,
+            name1 = name1, name2 = name2, unit1 = unit1, unit2 = unit2, counted = false,
             history = {count = 0, interval = 1, next = clock + 1,
                 rf1 = {}, rf2 = {}, times = {}, missing1 = {}, missing2 = {}}}
         session.last = nil
@@ -880,7 +948,9 @@ local function prepareFlightGraphs(widget, clock)
     unit1, unit2 = unit1 or "dB", unit2 or "dB"
     local signature = table.concat({width, height, widget.signalMinimum,
         widget.signalMaximum, widget.rfWarnDB, widget.rfCriticalDB,
-        widget.rfWarnPercent, widget.rfCriticalPercent, unit1, unit2}, ":")
+        widget.rfWarnPercent, widget.rfCriticalPercent, widget.rf1Profile, widget.rf2Profile,
+        widget.rf2WarnDB, widget.rf2CriticalDB, widget.rf2WarnPercent, widget.rf2CriticalPercent,
+        unit1, unit2}, ":")
     local ready, work = widget.rfGraphs, widget.rfGraphWork
     if ready and (ready.flight ~= flight or ready.signature ~= signature) then
         widget.rfGraphs, ready = nil, nil
@@ -901,14 +971,12 @@ local function prepareFlightGraphs(widget, clock)
             binIndex = 1, binScale = GRAPH_BINS / total, channels = {}}
         for channel = 1, 2 do
             local unit = channel == 1 and unit1 or unit2
+            local low, high, warning, critical = rfLimits(widget, unit, channel)
             work.channels[channel] = {
                 readings = channel == 1 and history.rf1 or history.rf2,
                 missing = channel == 1 and history.missing1 or history.missing2,
                 bins = {}, segments = {},
-                minimum = unit == "%" and 0 or widget.signalMinimum,
-                maximum = unit == "%" and 100 or widget.signalMaximum,
-                warning = unit == "%" and widget.rfWarnPercent or widget.rfWarnDB,
-                critical = unit == "%" and widget.rfCriticalPercent or widget.rfCriticalDB,
+                minimum = low, maximum = high, warning = warning, critical = critical,
                 x = (channel == 1 and 24 or 425) * sx, y = 220 * sy,
                 w = 350 * sx, h = 165 * sy,
                 dotX = math.min(sx, 1), dotY = math.min(sy, 1),
@@ -1001,10 +1069,8 @@ local function wakeup(widget)
     for key, value in pairs(readings) do data[key] = value end
     data.themeBackground, data.themeForeground = colors.background, colors.foreground
     data.themeSecondary, data.themeAccent = colors.secondary, colors.accent
-    local _, unit1 = sourceDetails(widget.rssi1Source, "RF1", "dB")
-    local _, unit2 = sourceDetails(widget.rssi2Source, "RF2", "dB")
-    data.rssi1Unit = data.rssi1 ~= nil and unit1 ~= "" and unit1 or "dB"
-    data.rssi2Unit = data.rssi2 ~= nil and unit2 ~= "" and unit2 or "dB"
+    data.rssi1Name, data.rssi1Unit = rfDetails(widget.rssi1Source, "RF1")
+    data.rssi2Name, data.rssi2Unit = rfDetails(widget.rssi2Source, "RF2")
     if widget.preview then
         data.voltage, data.current, data.used = 22.8, 18.2, 650
         data.rssi1, data.rssi2, data.rx1, data.tx = 86, 83, 7.4, 8.0
@@ -1043,8 +1109,16 @@ local function wakeup(widget)
     if data.rpmDisplay ~= nil then widget.peakRPM = math.max(widget.peakRPM or 0, data.rpmDisplay) end
     if data.watts ~= nil then widget.peakWatts = math.max(widget.peakWatts or 0, data.watts) end
     data.peakRPM, data.peakWatts = widget.peakRPM, widget.peakWatts
-    data.graph1 = sample(widget.graph1Source or widget.rssi1Source, "signal")
-    data.graph2 = sample(widget.graph2Source or widget.rssi2Source, "signal")
+    local currentFlight = widget.flightSession and widget.flightSession.current
+    local graphSource1, graphSource2
+    if currentFlight and currentFlight.graphSourcesPinned then
+        graphSource1, graphSource2 = currentFlight.source1, currentFlight.source2
+    else
+        graphSource1 = selectedSource(widget.graph1Source) or selectedSource(widget.rssi1Source)
+        graphSource2 = selectedSource(widget.graph2Source) or selectedSource(widget.rssi2Source)
+    end
+    data.graph1 = sample(graphSource1, "signal")
+    data.graph2 = sample(graphSource2, "signal")
     if widget.preview then data.rpm, data.rpmDisplay, data.watts, data.cellVoltage = 8300, 8300, 414.96, 3.8 end
     updateFlight(widget, data, clock, key)
     updateFlightDiagnostics(widget, data, key)
@@ -1140,18 +1214,19 @@ local function timerText(value)
     return value < 0 and "-" .. result or result
 end
 
-local function drawSignal(widget, colors, x, y, value, unit, label, sx, sy)
-    text(x, y, label, 32 * sx, 18 * sy, colors.secondary, LEFT, nil, true)
-    local ratio = value and clamp((value - widget.signalMinimum)
-        / math.max(1, widget.signalMaximum - widget.signalMinimum), 0, 1) or 0
+local function drawSignal(widget, colors, x, y, value, unit, label, channel, sx, sy)
+    text(x, y, label, 148 * sx, 14 * sy, colors.secondary, LEFT, nil, true)
+    local low, high, warning, critical = rfLimits(widget, unit, channel)
+    local ratio = value and clamp((value - low) / math.max(1, high - low), 0, 1) or 0
     local active = value and math.ceil(ratio * 5) or 0
+    local tone = value == nil and colors.secondary or value <= critical and COLORS.red
+        or value <= warning and COLORS.yellow or colors.accent
     for bar = 1, 5 do
         local height = (5 + bar * 3) * sy
-        rounded(x + (36 + (bar - 1) * 7) * sx, y + 22 * sy - height,
-            4 * sx, height, 1 * sx, bar <= active and colors.accent or colors.track)
+        rounded(x + (104 + (bar - 1) * 7) * sx, y + 35 * sy - height,
+            4 * sx, height, 1 * sx, bar <= active and tone or colors.track)
     end
-    local reading = valueText(value, 0) .. (unit or "")
-    text(x + 74 * sx, y, reading, 76 * sx, 23 * sy, colors.foreground)
+    text(x, y + 14 * sy, valueText(value, 0) .. (unit or ""), 99 * sx, 23 * sy, tone)
 end
 
 local function drawBattery(widget, colors, sx, sy)
@@ -1291,14 +1366,17 @@ local function drawFlightGraph(widget, colors, flight, channel, x, y, width, hei
     local unit = channel == 1 and flight.unit1 or flight.unit2
     unit = unit ~= "" and unit or "dB"
     unit = unit or "dB"
-    local minimumValue = unit == "%" and 0 or widget.signalMinimum
-    local maximumValue = unit == "%" and 100 or widget.signalMaximum
-    local warning = unit == "%" and widget.rfWarnPercent or widget.rfWarnDB
-    local critical = unit == "%" and widget.rfCriticalPercent or widget.rfCriticalDB
+    local minimumValue, maximumValue, warning, critical, profile = rfLimits(widget, unit, channel)
     local low = channel == 1 and flight.minRF1 or flight.minRF2
-    text(x, y - 24 * sy, "RF" .. channel .. "  MIN " .. valueText(low, 0) .. unit,
+    local name = (channel == 1 and flight.name1 or flight.name2) or "RF" .. channel
+    text(x, y - 24 * sy, name .. "  MIN " .. valueText(low, 0) .. unit,
         width, 19 * sy, colors.secondary, LEFT, nil, true)
     rect(x, y, width, height, colors.track)
+    if unit ~= "dB" and unit ~= "%" then
+        text(x + width / 2, y + height / 2, "Select RSSI (dB) or VFR (%)",
+            width - 16 * sx, 18 * sy, colors.secondary, CENTERED, nil, true)
+        return
+    end
     local range = math.max(1, maximumValue - minimumValue)
     lcd.color(COLORS.yellow)
     local warningY = round(y + height - clamp((warning - minimumValue) / range, 0, 1) * height)
@@ -1334,6 +1412,9 @@ local function drawFlightGraph(widget, colors, flight, channel, x, y, width, hei
     text(x, y + height + 6 * sy, "0s", 40 * sx, 14 * sy, colors.secondary, LEFT, nil, true)
     text(x + width, y + height + 6 * sy, timerText(total), 80 * sx, 14 * sy,
         colors.secondary, RIGHT, nil, true)
+    local limits = unit == "%" and "VFR early " .. warning .. "% / low " .. critical .. "%"
+        or profile .. " low " .. warning .. " / crit " .. critical .. " dB"
+    text(x, y + height + 23 * sy, limits, width, 14 * sy, colors.secondary, LEFT, nil, true)
 end
 
 local function paintFlight(widget, colors, sx, sy)
@@ -1367,9 +1448,9 @@ local function paintFlight(widget, colors, sx, sy)
             752 * sx, 19 * sy, colors.foreground, LEFT, nil, true)
         drawFlightGraph(widget, colors, flight, 1, 24 * sx, 220 * sy, 350 * sx, 165 * sy, sx, sy)
         drawFlightGraph(widget, colors, flight, 2, 425 * sx, 220 * sy, 350 * sx, 165 * sy, sx, sy)
-        text(24 * sx, 419 * sy, "KV POTENTIAL MAX " .. valueText(flight.maxPotential, 0)
+        text(24 * sx, 430 * sy, "KV POTENTIAL MAX " .. valueText(flight.maxPotential, 0)
             .. " rpm (not measured)", 752 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
-        text(24 * sx, 441 * sy, "RF: 48 minimum bins/channel; gaps = missing data. Visual limits only.",
+        text(24 * sx, 449 * sy, "RF: 48 minimum bins/channel; gaps = missing data. Visual limits only.",
             752 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
     end
     text(24 * sx, 463 * sy, "Widget menu: Dashboard / Flight log", 750 * sx, 14 * sy,
@@ -1402,8 +1483,8 @@ local function paintDiagnostics(widget, colors, sx, sy)
         {"ARM", data.armed, data.armName or "Not selected",
             type(data.armRaw) == "boolean" and tostring(data.armRaw) or valueText(data.armRaw, 0)},
         {"AIRBORNE GATE", data.airborne, data.gateName or "Not selected",
-            widget.airborneSource and (type(data.gateRaw) == "boolean" and tostring(data.gateRaw)
-                or valueText(data.gateRaw, 0)) or "Optional"},
+            data.gateOptional and "Optional" or (type(data.gateRaw) == "boolean" and tostring(data.gateRaw)
+                or valueText(data.gateRaw, 0))},
         {"PACK VOLTAGE", data.voltage ~= nil, "Positive voltage required", valueText(data.voltage, 1) .. " V"},
     }
     for index, gate in ipairs(gates) do
@@ -1440,8 +1521,10 @@ local function paint(widget)
     local pack = TYPES[widget.chemistry].name .. "  /  " .. widget.cellCount .. "S  /  "
         .. widget.capacityMah .. " mAh"
     text(24 * sx, 78 * sy, pack, 294 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
-    drawSignal(widget, colors, 343 * sx, 19 * sy, data.rssi1, data.rssi1Unit, "RF1", sx, sy)
-    drawSignal(widget, colors, 343 * sx, 62 * sy, data.rssi2, data.rssi2Unit, "RF2", sx, sy)
+    drawSignal(widget, colors, 343 * sx, 12 * sy, data.rssi1, data.rssi1Unit,
+        data.rssi1Name or "RF1", 1, sx, sy)
+    drawSignal(widget, colors, 343 * sx, 56 * sy, data.rssi2, data.rssi2Unit,
+        data.rssi2Name or "RF2", 2, sx, sy)
     text(503 * sx, 18 * sy, "RX", 29 * sx, 18 * sy, colors.secondary, LEFT, nil, true)
     text(535 * sx, 17 * sy, valueText(data.rx1, 1) .. "V", 73 * sx, 26 * sy, colors.foreground)
     text(503 * sx, 61 * sy, "TX", 29 * sx, 18 * sy, colors.secondary, LEFT, nil, true)
@@ -1517,6 +1600,14 @@ local function numberField(widget, label, key, minimum, maximum, suffix, step)
             if key == "rfCriticalDB" then widget.rfWarnDB = math.max(widget.rfWarnDB, value) end
             if key == "rfWarnPercent" then widget.rfCriticalPercent = math.min(widget.rfCriticalPercent, value) end
             if key == "rfCriticalPercent" then widget.rfWarnPercent = math.max(widget.rfWarnPercent, value) end
+            if key == "rf2WarnDB" then widget.rf2CriticalDB = math.min(widget.rf2CriticalDB, value) end
+            if key == "rf2CriticalDB" then widget.rf2WarnDB = math.max(widget.rf2WarnDB, value) end
+            if key == "rf2WarnPercent" then widget.rf2CriticalPercent = math.min(widget.rf2CriticalPercent, value) end
+            if key == "rf2CriticalPercent" then widget.rf2WarnPercent = math.max(widget.rf2WarnPercent, value) end
+            if key == "rfWarnDB" or key == "rfCriticalDB" or key == "rfWarnPercent"
+                or key == "rfCriticalPercent" then widget.rf1Profile = 3 end
+            if key == "rf2WarnDB" or key == "rf2CriticalDB" or key == "rf2WarnPercent"
+                or key == "rf2CriticalPercent" then widget.rf2Profile = 3 end
             changed(widget)
         end)
     if suffix then field:suffix(suffix) end
@@ -1561,7 +1652,7 @@ local function configure(widget)
     local function sourceField(label, key, alarmReset)
         local line = form.addLine(label, widget.configPanel)
         form.addSourceField(line, nil, function() return widget[key] end,
-            function(value) widget[key] = value; changed(widget, alarmReset) end)
+            function(value) widget[key] = selectedSource(value); changed(widget, alarmReset) end)
     end
     if widget.configError then note(widget.configError) end
     note("Settings: per-model checked files in /scripts/vc*.cfg")
@@ -1616,8 +1707,25 @@ local function configure(widget)
     group("Telemetry")
     for _, definition in ipairs(SOURCE_FIELDS) do sourceField(definition.label, definition.key, true) end
     note("Blank Tx source uses radio battery; RF = dB or %.")
-    numberField(widget, "RF scale min", "signalMinimum", -150, 199, nil, 1)
-    numberField(widget, "RF scale max", "signalMaximum", -149, 200, nil, 1)
+    group("RF signals")
+    local rfProfiles = {{"ACCESS / TD / TW", 1}, {"ACCST", 2}, {"Custom", 3}}
+    choiceField(widget, "RF1 profile", "rf1Profile", rfProfiles)
+    choiceField(widget, "RF2 profile", "rf2Profile", rfProfiles)
+    numberField(widget, "RSSI scale min", "signalMinimum", -150, 199, "dB", 1)
+    numberField(widget, "RSSI scale max", "signalMaximum", -149, 200, "dB", 1)
+    numberField(widget, "RF1 low RSSI", "rfWarnDB", -149, 200, "dB", 1)
+    numberField(widget, "RF1 critical RSSI", "rfCriticalDB", -150, 199, "dB", 1)
+    numberField(widget, "RF1 early VFR", "rfWarnPercent", 1, 100, "%", 1)
+    numberField(widget, "RF1 low VFR", "rfCriticalPercent", 0, 99, "%", 1)
+    numberField(widget, "RF2 low RSSI", "rf2WarnDB", -149, 200, "dB", 1)
+    numberField(widget, "RF2 critical RSSI", "rf2CriticalDB", -150, 199, "dB", 1)
+    numberField(widget, "RF2 early VFR", "rf2WarnPercent", 1, 100, "%", 1)
+    numberField(widget, "RF2 low VFR", "rf2CriticalPercent", 0, 99, "%", 1)
+    note("Presets: RSSI 35/32 or 45/42 dB; VFR 95/50%.")
+    note("Editing a limit selects Custom for that RF slot.")
+    note("Presets ignore custom fields; VFR scale is 0-100%.")
+    note("Names/units follow sources, even without live data.")
+    note("Visual profiles do not change native radio alarms.")
 
     group("Lower deck")
     choiceField(widget, "Show", "deckMode", {{"Custom", 1}, {"RPM", 2}, {"Watts", 3},
@@ -1660,11 +1768,8 @@ local function configure(widget)
     numberField(widget, "End delay", "endDelay", 3, 120, "s", 1)
     sourceField("RF graph 1", "graph1Source")
     sourceField("RF graph 2", "graph2Source")
-    numberField(widget, "RF warning dB", "rfWarnDB", -149, 200, "dB", 1)
-    numberField(widget, "RF critical dB", "rfCriticalDB", -150, 199, "dB", 1)
-    numberField(widget, "VFR warning", "rfWarnPercent", 1, 100, "%", 1)
-    numberField(widget, "VFR critical", "rfCriticalPercent", 0, 99, "%", 1)
     note("Arm + >=60s + >=50% throttle for >=5s by default.")
+    note("--- = no extra gate; Always on also passes.")
     note("Long armed bench runs can count: use airborne gate.")
     note("Use actual API endpoints; UI % may use another scale.")
     note("Widget menu / Flight diagnostics shows raw and gates.")
