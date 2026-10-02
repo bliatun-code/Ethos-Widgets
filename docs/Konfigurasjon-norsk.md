@@ -2,7 +2,7 @@
 
 [Alle bilder og detaljer](Configuration.md) | [Installasjon](VoltDeck.md)
 
-**Utviklingsversjon 2026.5-v2. Bildene er laget i ETHOS-simulatoren med
+**Utviklingsversjon 2026.6-v2. Bildene er laget i ETHOS-simulatoren med
 syntetiske data, ikke fra en virkelig flyging. Release avventer radiotest.**
 
 ![LCD RPM og Watt](images/rpm-watts-lcd.png)
@@ -92,9 +92,26 @@ Enheten kommer fra sensoren; widgeten oppretter ikke nye sensorer i modellen.
 
 For faktisk logging: velg arm-betingelse og throttle-kilde. Standardfiltrene
 er minst 60 sekunder og minst 50% throttle i til sammen 5 sekunder.
-Still throttle-området korrekt: normalt -1024 til 1024 for kanalkilden,
-eller 0 til 100 hvis kilden gir prosent. En passende **Airborne gate**
+Still **Throttle low (raw) / high (raw)** etter verdiene Lua faktisk leser,
+ikke bare prosentene i kanalmonitoren. Kilden kan bruke -1024/+1024,
+-100/+100 eller 0/100; bruk endepunktene for akkurat den kilden. En passende **Airborne gate**
 kan gi bedre filtrering, men en lang benktest kan likevel bli telt.
+
+### Diagnose flytelling
+
+Velg **Flight diagnostics** i widgetmenyen. Visningen viser faktisk
+throttle-råverdi, beregnet gass (0-100%), kalibreringsområdet, arm-betingelse,
+valgfri airborne gate og gyldig pakkespenning. **Qualifying time** og
+**High throttle time** viser opptjente sekunder mot kravene. Statuslinjen
+forteller hvilket vilkår som først blokkerer tellingen.
+
+Et uvalgt arm-signal blokkerer logging; en uvalgt airborne gate slipper
+igjennom. Diagnosen kan åpnes med logging deaktivert og endrer ikke kilder,
+innstillinger eller sikkerhetsfunksjoner. Midtstilling tilsvarer 50% gass
+selv om kanalmonitoren viser 0%. Hold motoren sikkert deaktivert ved
+kontroll av endepunkter, og slå av logging under benktester som ikke skal telles.
+
+![Flydiagnose i ETHOS-simulatoren](images/flight-diagnostics.png)
 
 Velg RSSI-kilder for dB-grafer eller VFR-kilder for prosentgrafer.
 Gul/rød grafmerking er visuelle grenser, ikke radioens telemetrialarmer.
@@ -121,4 +138,3 @@ modells lagrede filer som en ferdig konfigurasjon.
 Behold radioens egne alarmer, failsafe og sikkerhetskontroller.
 Bildene dokumenterer utseendet; radiotesten din avgjør hva som må rettes
 før vi lager en release.
-

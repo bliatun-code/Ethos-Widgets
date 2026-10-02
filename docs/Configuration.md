@@ -277,13 +277,30 @@ validation is still required before treating this development build as ready.
 | End delay | 10 s |
 | RF graph 1 / 2 | RSSI or VFR sources for that model |
 
-For a throttle source expressed in percent, set **Throttle low / high =
-0 / 100** instead. Do not assume every source uses the same range.
+Set **Throttle low (raw) / high (raw)** to the actual `source:value()`
+endpoints, not the channel monitor's percentage display. Sources can use
+-1024/+1024, -100/+100 or 0/100; verify the selected source. The widget
+normalizes these endpoints to 0-100% throttle.
 
 A qualifying flight requires the arm condition, valid pack telemetry and
 the time/throttle gates. The optional airborne gate can improve filtering.
 A long armed bench test can still qualify: this logic does not prove that
 the aircraft is flying. Disable logging during bench work when appropriate.
+
+### Flight diagnostics
+
+Choose **Flight diagnostics** in the widget menu. It shows actual throttle
+API raw value, normalized 0-100% throttle, calibration endpoints, arm and
+optional airborne gates, valid pack voltage and qualification progress.
+The status banner identifies the first blocking condition.
+
+An unselected arm source blocks logging; an unselected airborne gate passes.
+Diagnostics can be opened with logging disabled and do not change sources,
+settings or native safety functions. Mid-stick means 50% normalized throttle
+even when the channel monitor shows 0%. Keep the motor safely disabled when
+checking endpoints, and disable logging for bench tests that should not count.
+
+![Flight diagnostics in ETHOS](images/flight-diagnostics.png)
 
 Only the model's counter persists. Last-flight statistics and graphs are
 kept in RAM and can disappear when the radio is turned off. History is
@@ -322,4 +339,3 @@ backgrounds. The artwork is documentation-only; see [NOTICE](../NOTICE.md).
 
 These screenshots verify presentation, not real-world safety or flight
 qualification. Report physical-radio issues before the first release.
-
