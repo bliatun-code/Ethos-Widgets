@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.7-v2"
+local VERSION = "2026.8-v2"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -801,14 +801,19 @@ local function updateFlightDiagnostics(widget, data, key)
     if not widget.logEnabled then data.logReason = "LOG DISABLED"
     elseif widget.preview then data.logReason = "PREVIEW ENABLED"
     elseif not key then data.logReason = "MODEL ID UNAVAILABLE"
+    elseif session and session.owner ~= widget then data.logReason = "ANOTHER WIDGET OWNS LOG"
+    elseif data.logLossTime ~= nil then
+        data.logReason = "PACK LOSS " .. string.format("%.1f / %d s", data.logLossTime, widget.endDelay)
+    elseif session and not flight and session.last and data.voltage == nil then
+        data.logReason = "PACK COMPLETE - LAST LOG KEPT"
     elseif not selectedSource(widget.armSource) then data.logReason = "SELECT ARM SOURCE"
     elseif not selectedSource(widget.throttleSource) then data.logReason = "SELECT THROTTLE SOURCE"
     elseif data.throttlePercent == nil then data.logReason = "INVALID THROTTLE"
+    elseif flight and not data.armed then data.logReason = "SESSION PAUSED - ARM OFF"
+    elseif flight and not data.airborne then data.logReason = "SESSION PAUSED - GATE OFF"
     elseif not data.armed then data.logReason = "ARM CONDITION OFF"
     elseif not data.airborne then data.logReason = "AIRBORNE GATE OFF"
     elseif data.voltage == nil then data.logReason = "NO VALID PACK VOLTAGE"
-    elseif session and session.owner ~= widget then data.logReason = "ANOTHER WIDGET OWNS LOG"
-    elseif session and session.lockout then data.logReason = "DISARM TO REARM"
     elseif data.logCounted then data.logReason = "FLIGHT COUNTED"
     elseif data.logDuration < widget.flightMinimum then data.logReason = "WAITING FOR FLIGHT TIME"
     elseif data.logHighTime < widget.highThrottleSeconds then data.logReason = "WAITING FOR HIGH THROTTLE"
@@ -831,7 +836,9 @@ local function updateFlight(widget, data, clock, key)
     end
     if not widget.logEnabled or widget.preview or not key then
         if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then
-            FLIGHT_SESSION.current, FLIGHT_SESSION.owner = nil, nil
+            -- Disabling logging pauses the pack session; it must not rearm its count.
+            FLIGHT_SESSION.owner, FLIGHT_SESSION.lastClock = nil, nil
+            if FLIGHT_SESSION.current then FLIGHT_SESSION.current.running = false end
         end
         widget.flightSession = nil
         return
@@ -848,8 +855,7 @@ local function updateFlight(widget, data, clock, key)
     session.lastClock = clock
     local armed, throttle, gate = data.armed, data.throttlePercent, data.airborne
     local ready = selectedSource(widget.armSource) ~= nil and throttle ~= nil and data.voltage ~= nil
-    if not armed then session.lockout = false end
-    if ready and armed and gate and not session.current and not session.lockout then
+    if ready and armed and gate and not session.current then
         local source1 = selectedSource(widget.graph1Source) or selectedSource(widget.rssi1Source)
         local source2 = selectedSource(widget.graph2Source) or selectedSource(widget.rssi2Source)
         local name1, unit1 = rfDetails(source1, "RF1")
@@ -859,7 +865,7 @@ local function updateFlight(widget, data, clock, key)
             name1 = name1, name2 = name2, unit1 = unit1, unit2 = unit2, counted = false,
             history = {count = 0, interval = 1, next = clock + 1,
                 rf1 = {}, rf2 = {}, times = {}, missing1 = {}, missing2 = {}}}
-        session.last = nil
+        -- Keep the last qualified record until this candidate actually qualifies.
         dt = 0
     end
     local flight = session.current
@@ -867,9 +873,12 @@ local function updateFlight(widget, data, clock, key)
         if data.voltage == nil then
             flight.lossSince = flight.lossSince or clock
         else flight.lossSince = nil end
-        if armed and ready and gate then
-            flight.duration = flight.duration + dt
-            if throttle >= widget.throttleThreshold then flight.highTime = flight.highTime + dt end
+        local running = armed and ready and gate
+        if running then
+            -- A resumed motor must not add the preceding paused polling interval.
+            local progress = flight.running and dt or 0
+            flight.duration = flight.duration + progress
+            if throttle >= widget.throttleThreshold then flight.highTime = flight.highTime + progress end
             if data.voltage ~= nil then
                 flight.minVoltage = minimum(flight.minVoltage, data.voltage)
                 flight.maxVoltage = math.max(flight.maxVoltage or data.voltage, data.voltage)
@@ -878,21 +887,25 @@ local function updateFlight(widget, data, clock, key)
             if data.rpm ~= nil then flight.maxRPM = math.max(flight.maxRPM or 0, data.rpm) end
             if data.rpmPotential ~= nil then flight.maxPotential = math.max(flight.maxPotential or 0, data.rpmPotential) end
             if data.watts ~= nil then flight.maxWatts = math.max(flight.maxWatts or 0, data.watts) end
-            flight.minRF1, flight.minRF2 = minimum(flight.minRF1, data.graph1), minimum(flight.minRF2, data.graph2)
             if not flight.counted and flight.duration >= widget.flightMinimum
                 and flight.highTime >= widget.highThrottleSeconds then
                 flight.counted = true
+                session.last = nil
                 session.count = math.min(999999, session.count + 1)
                 session.pending, session.attempts, session.retryAt = true, 0, clock
             end
-            flight.endSince = nil
-        elseif not armed or not gate then flight.endSince = flight.endSince or clock end
+        end
+        flight.running = running
+        -- RF history spans the whole pack session, including motor inspection pauses.
+        flight.minRF1, flight.minRF2 = minimum(flight.minRF1, data.graph1), minimum(flight.minRF2, data.graph2)
         if graphSample(flight, clock, data.graph1, data.graph2) then session.revision = session.revision + 1 end
-        if (flight.endSince and clock - flight.endSince >= widget.endDelay)
-            or (flight.lossSince and clock - flight.lossSince >= 30) then
+        -- ARM and the optional gate only pause progress. Sustained pack-voltage
+        -- absence is the session boundary; short telemetry losses resume this record.
+        if flight.lossSince and clock - flight.lossSince >= widget.endDelay then
             flight.elapsed = clock - flight.started
+            flight.running = false
             if flight.counted then session.last = flight end
-            session.current, session.lockout = nil, armed
+            session.current = nil
             session.revision = session.revision + 1
         end
     end
@@ -901,11 +914,18 @@ local function updateFlight(widget, data, clock, key)
         saveCounter(session)
         session.retryAt = clock + 5
     end
+    flight = session.current
     data.logCount = session.count
-    data.logState = session.error or (not widget.armSource and "Choose arm source")
-        or (not widget.throttleSource and "Choose throttle")
-        or (session.current and (session.current.counted and "FLIGHT" or "Qualifying"))
-        or (session.lockout and "Disarm to rearm") or "Ready"
+    data.logPaused = flight ~= nil and not flight.running
+    data.logShowingLast = session.last ~= nil and (not flight or not flight.counted)
+    data.logLossTime = flight and flight.lossSince
+        and math.floor((clock - flight.lossSince) * 10) / 10 or nil
+    data.logState = session.error or (not selectedSource(widget.armSource) and "Choose arm source")
+        or (not selectedSource(widget.throttleSource) and "Choose throttle")
+        or (flight and (flight.lossSince and "Pack loss wait"
+            or (flight.counted and (flight.running and "FLIGHT" or "FLIGHT paused"))
+            or (flight.running and "Qualifying" or "Qualify paused")))
+        or (session.last and "Pack complete") or "Ready"
     data.logRevision = session.revision
 end
 
@@ -936,7 +956,8 @@ end
 -- Keep the 180-point history; build a 48-bin trace outside paint, in small slices.
 local function prepareFlightGraphs(widget, clock)
     local session = widget.flightSession
-    local flight = session and (session.current or session.last)
+    local flight = session and ((session.current and session.current.counted and session.current)
+        or session.last or session.current)
     local width, height = widget.graphWidth, widget.graphHeight
     if not widget.logVisible or not flight or not width or not height then
         widget.rfGraphs, widget.rfGraphWork = nil, nil
@@ -1419,8 +1440,10 @@ end
 
 local function paintFlight(widget, colors, sx, sy)
     local session = widget.flightSession
-    local flight = session and (session.current or session.last)
-    text(24 * sx, 16 * sy, "FLIGHT LOG", 320 * sx, 28 * sy, colors.foreground)
+    local flight = session and ((session.current and session.current.counted and session.current)
+        or session.last or session.current)
+    text(24 * sx, 16 * sy, widget.data.logShowingLast and "LAST FLIGHT LOG" or "FLIGHT LOG",
+        320 * sx, 28 * sy, colors.foreground)
     text(24 * sx, 49 * sy, widget.data.modelName or "VoltDeck", 550 * sx, 23 * sy,
         colors.secondary, LEFT, nil, true)
     text(776 * sx, 14 * sy, "FLIGHTS " .. tostring(session and session.count or 0),
@@ -1443,7 +1466,8 @@ local function paintFlight(widget, colors, sx, sy)
             text(x, 95 * sy, labels[index], 235 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
             text(x, 119 * sy, values[index], 235 * sx, 32 * sy, colors.foreground)
         end
-        text(24 * sx, 161 * sy, "FLIGHT " .. timerText(flight.duration)
+        text(24 * sx, 161 * sy, (widget.data.logShowingLast and "LAST FLIGHT " or "FLIGHT ")
+        .. timerText(flight.duration)
             .. "   POWER MAX " .. valueText(flight.maxWatts, 0) .. " W",
             752 * sx, 19 * sy, colors.foreground, LEFT, nil, true)
         drawFlightGraph(widget, colors, flight, 1, 24 * sx, 220 * sy, 350 * sx, 165 * sy, sx, sy)
@@ -1463,8 +1487,9 @@ local function paintDiagnostics(widget, colors, sx, sy)
     text(24 * sx, 51 * sy, data.modelName or "VoltDeck", 520 * sx, 20 * sy, colors.secondary, LEFT, nil, true)
     text(776 * sx, 19 * sy, VERSION, 200 * sx, 19 * sy, colors.secondary, RIGHT, nil, true)
     local tone = data.logCounted and COLORS.green or COLORS.yellow
-    if data.throttlePercent == nil or data.voltage == nil or not data.armed
-        or not data.airborne or not widget.logEnabled or widget.preview then tone = COLORS.red end
+    if data.logPaused then tone = COLORS.yellow end
+    if data.throttlePercent == nil or data.voltage == nil or not widget.logEnabled or widget.preview
+        or ((not data.armed or not data.airborne) and not data.logPaused) then tone = COLORS.red end
     rect(24 * sx, 83 * sy, 752 * sx, 47 * sy, colors.track)
     text(40 * sx, 94 * sy, data.logReason or "Waiting for sources", 720 * sx, 25 * sy, tone, LEFT, nil, true)
     local labels = {"THROTTLE API RAW", "THROTTLE 0-100%", "CALIBRATION RAW"}
@@ -1765,11 +1790,16 @@ local function configure(widget)
     numberField(widget, "Flight minimum", "flightMinimum", 60, 3600, "s", 10)
     numberField(widget, "Throttle gate", "throttleThreshold", 10, 100, "%", 5)
     numberField(widget, "High throttle", "highThrottleSeconds", 1, 120, "s", 1)
-    numberField(widget, "End delay", "endDelay", 3, 120, "s", 1)
+    -- Keep the checked settings key/order compatible with earlier builds.
+    numberField(widget, "Pack loss delay", "endDelay", 3, 120, "s", 1)
     sourceField("RF graph 1", "graph1Source")
     sourceField("RF graph 2", "graph2Source")
     note("Arm + >=60s + >=50% throttle for >=5s by default.")
     note("--- = no extra gate; Always on also passes.")
+    note("Motor disarm pauses; one count per pack session.")
+    note("Only sustained pack-voltage loss ends a session.")
+    note("Last log stays until a new flight qualifies.")
+    note("Long RF loss can look like a disconnected pack.")
     note("Long armed bench runs can count: use airborne gate.")
     note("Use actual API endpoints; UI % may use another scale.")
     note("Widget menu / Flight diagnostics shows raw and gates.")
@@ -1780,7 +1810,7 @@ local function configure(widget)
     form.addButton(line, nil, {text = "Reset...", press = function()
         local session = widget.flightSession
         if not session or session.current or switchOn(widget.armSource) then
-            form.openDialog({title = "Flight counter", message = "Enable log and disarm before reset.",
+            form.openDialog({title = "Flight counter", message = "Enable log, disarm and disconnect pack before reset.",
                 buttons = {{label = "OK", action = function() return true end}}})
             return
         end
@@ -1806,7 +1836,10 @@ end
 local function destroy(widget)
     widget.modelImage, widget.valueFont, widget.flightSession = nil, nil, nil
     widget.rfGraphs, widget.rfGraphWork = nil, nil
-    if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then FLIGHT_SESSION.owner = nil end
+    if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then
+        FLIGHT_SESSION.owner, FLIGHT_SESSION.lastClock = nil, nil
+        if FLIGHT_SESSION.current then FLIGHT_SESSION.current.running = false end
+    end
     collectResources()
 end
 
