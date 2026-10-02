@@ -2,7 +2,7 @@
 
 [Alle bilder og detaljer](Configuration.md) | [Installasjon](VoltDeck.md)
 
-**Utviklingsversjon 2026.4-v2. Bildene er laget i ETHOS-simulatoren med
+**Utviklingsversjon 2026.5-v2. Bildene er laget i ETHOS-simulatoren med
 syntetiske data, ikke fra en virkelig flyging. Release avventer radiotest.**
 
 ![LCD RPM og Watt](images/rpm-watts-lcd.png)
@@ -101,10 +101,12 @@ Gul/rød grafmerking er visuelle grenser, ikke radioens telemetrialarmer.
 Brudd i grafen betyr manglende data. Bare telleren lagres permanent;
 siste flygings statistikk og grafer ligger i RAM.
 
-Kjent begrensning i utviklingsversjonen: tette RF-grafer kan treffe ETHOS sin
-grense for Lua-instruksjoner. Demografene bruker 48 punkter, ikke fullt
-historikkbudsjett. Hold flylogging deaktivert ved kritisk bruk til dette er
-optimalisert og testet pa radioen.
+RF-tegningen er begrenset: opptil 180 historikkpunkter blir til maksimalt
+48 minimumsbevarende tidsfelt per kanal. Korte signalfall beholdes, og
+manglende data bryter kurven. Beregningen fordeles over flere oppdateringer;
+selve tegningen bruker ferdige koordinater. Grafen kan ligge noen sekunder
+etter sanntid. De nye RF-bildene bruker 180 syntetiske inngangspunkter.
+Optimaliseringen trenger fortsatt bekreftelse på fysisk radio før release.
 
 ## Modellbilder og sikkerhet
 

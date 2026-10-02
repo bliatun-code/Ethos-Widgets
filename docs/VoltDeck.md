@@ -104,10 +104,25 @@ duration and a high-throttle interval. An optional airborne gate can improve
 filtering. A long armed bench test can still qualify without a suitable gate.
 RF graph colors are visual thresholds, not changes to the radio's alarms.
 
-Known development limitation: dense RF histories can reach the ETHOS Lua
-instruction limit during drawing. The synthetic gallery uses 48 graph points;
-it does not validate the full production-history budget. Keep flight logging
-disabled for critical use until this is optimized and tested on the radio.
+RF rendering is bounded: up to 180 history points are reduced to at most
+48 minimum-preserving time bins per channel. Missing data breaks the trace;
+no averaging hides brief lows. Geometry is prepared over several wakeups,
+then paint draws cached primitives. Live traces can lag by a few seconds.
+The updated RF examples use 180 synthetic input points. Physical-radio
+validation is still required before treating this development build as ready.
+
+## RF work and memory bounds
+
+Each wakeup processes at most 32 history entries or 24 display bins.
+Only the visible flight-log view prepares a graph. Two bounded geometry
+buffers allow the previous complete trace to remain visible while its
+replacement is prepared; closing the log or changing models releases them.
+No additional bitmap or per-flight file is created for the graph cache.
+The 180-point history, flight minima and persistent counter are unchanged.
+
+This replaces the former full-history scan inside paint, which could hit
+the callback instruction limit. Background: [FrSky Lua instruction-limit
+report](https://github.com/FrSkyRC/ETHOS-Feedback-Community/issues/4103).
 
 ## Lua and compiled bytecode
 

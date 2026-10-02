@@ -255,10 +255,12 @@ frame reception is easy to see. Adjust visual thresholds to the equipment
 and keep the radio's native link alarms. The source's units choose the
 graph interpretation; a percentage is not an RSSI dB reading.
 
-Known development limitation: dense RF histories can reach the ETHOS Lua
-instruction limit during drawing. The synthetic gallery uses 48 graph points;
-it does not validate the full production-history budget. Keep flight logging
-disabled for critical use until this is optimized and tested on the radio.
+RF rendering is bounded: up to 180 history points are reduced to at most
+48 minimum-preserving time bins per channel. Missing data breaks the trace;
+no averaging hides brief lows. Geometry is prepared over several wakeups,
+then paint draws cached primitives. Live traces can lag by a few seconds.
+The updated RF examples use 180 synthetic input points. Physical-radio
+validation is still required before treating this development build as ready.
 
 ## 12. Configure flight detection for the actual model
 
