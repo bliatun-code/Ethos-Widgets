@@ -1502,7 +1502,7 @@ end
 
 local function init()
     system.registerWidget({
-        key = "VoltDeck", name = "VoltDeck", create = create, paint = paint,
+        key = "vdeck", name = "VoltDeck", create = create, paint = paint,
         wakeup = wakeup, configure = configure, read = read, write = write,
         menu = menu, destroy = destroy,
         persistent = true, title = false,
