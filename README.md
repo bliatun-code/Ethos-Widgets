@@ -3,7 +3,7 @@
 ## VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS.
 
-**Development build: 2026.5-v2. Physical X20RS testing is in progress.
+**Development build: 2026.6-v2. Physical X20RS testing is in progress.
 No release or flight-ready certification has been published.**
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
@@ -79,4 +79,3 @@ for the separate status of owner-supplied demonstration artwork.
 Public files are explicitly selected: Lua source, documentation and curated
 example images. Internal notes, test tools, packet feeders, native model files,
 live telemetry logs and generated per-model state stay private.
-

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.6-v2 - development, 2026-10-02
+No release or tag. Physical-radio validation is still pending.
+
+- Add read-only Flight diagnostics with raw/normalized throttle values.
+- Show arm, airborne and pack-voltage gates and qualification progress.
+- Identify blocking flight-count conditions and counter storage errors.
+- Clarify raw endpoints versus channel-monitor percentages.
+- Keep saved settings, source assignments and flight qualification rules unchanged.
+
 ## 2026.5-v2 - development, 2026-10-02
 No release or tag. Physical-radio confirmation of RF optimization is pending.
 
@@ -23,4 +32,3 @@ Not a tagged or published release. Physical X20RS/model testing is in progress.
 - Illustrated configuration examples with synthetic simulator values.
 
 The internal v1 snapshot is an archive, not a separately supported release.
-
