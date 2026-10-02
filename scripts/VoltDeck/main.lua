@@ -4,11 +4,14 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.4-v2"
+local VERSION = "2026.5-v2"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
 local HISTORY_POINTS = 180
+local GRAPH_BINS = 48
+local GRAPH_SOURCE_STEPS = 32
+local GRAPH_BIN_STEPS = 24
 local BITMAP_CACHE = setmetatable({}, {__mode = "v"})
 local VALUE_FONTS = {FONT_XXL, FONT_XL, FONT_L_BOLD, FONT_L, FONT_M_BOLD, FONT_M, FONT_S, FONT_XS}
 local SMALL_FONTS = {FONT_S, FONT_XS}
@@ -711,6 +714,7 @@ local function graphSample(flight, clock, rf1, rf2)
             history.missing1[index], history.missing2[index] = nil, nil
         end
         history.count, history.interval = HISTORY_POINTS / 2, history.interval * 2
+        history.compaction = (history.compaction or 0) + 1
     end
     local index = history.count + 1
     history.count = index
@@ -719,6 +723,7 @@ local function graphSample(flight, clock, rf1, rf2)
     history.times[index] = clock - flight.started
     history.low1, history.low2, history.gap1, history.gap2 = nil, nil, false, false
     history.next = clock + history.interval
+    history.revision = (history.revision or 0) + 1
     return true
 end
 
@@ -826,6 +831,119 @@ local function alarm(widget, data, clock)
     pcall(system.playTone, 1200, 250, 50)
 end
 
+-- Keep the 180-point history; build a 48-bin trace outside paint, in small slices.
+local function prepareFlightGraphs(widget, clock)
+    local session = widget.flightSession
+    local flight = session and (session.current or session.last)
+    local width, height = widget.graphWidth, widget.graphHeight
+    if not widget.logVisible or not flight or not width or not height then
+        widget.rfGraphs, widget.rfGraphWork = nil, nil
+        return false
+    end
+    local history = flight.history
+    local unit1 = flight.unit1 ~= "" and flight.unit1 or "dB"
+    local unit2 = flight.unit2 ~= "" and flight.unit2 or "dB"
+    unit1, unit2 = unit1 or "dB", unit2 or "dB"
+    local signature = table.concat({width, height, widget.signalMinimum,
+        widget.signalMaximum, widget.rfWarnDB, widget.rfCriticalDB,
+        widget.rfWarnPercent, widget.rfCriticalPercent, unit1, unit2}, ":")
+    local ready, work = widget.rfGraphs, widget.rfGraphWork
+    if ready and (ready.flight ~= flight or ready.signature ~= signature) then
+        widget.rfGraphs, ready = nil, nil
+    end
+    local compaction = history.compaction or 0
+    if work and (work.flight ~= flight or work.signature ~= signature
+        or work.compaction ~= compaction) then
+        widget.rfGraphWork, work = nil, nil
+    end
+    local revision = history.revision or history.count
+    local total = math.max(1, math.floor(flight.elapsed or (clock - flight.started)))
+    if not work then
+        if ready and ready.revision == revision and ready.total == total then return false end
+        local sx, sy = width / 800, height / 480
+        work = {flight = flight, signature = signature, compaction = compaction,
+            revision = revision, total = total, width = width, height = height,
+            count = math.min(history.count, HISTORY_POINTS), sampleIndex = 1,
+            binIndex = 1, binScale = GRAPH_BINS / total, channels = {}}
+        for channel = 1, 2 do
+            local unit = channel == 1 and unit1 or unit2
+            work.channels[channel] = {
+                readings = channel == 1 and history.rf1 or history.rf2,
+                missing = channel == 1 and history.missing1 or history.missing2,
+                bins = {}, segments = {},
+                minimum = unit == "%" and 0 or widget.signalMinimum,
+                maximum = unit == "%" and 100 or widget.signalMaximum,
+                warning = unit == "%" and widget.rfWarnPercent or widget.rfWarnDB,
+                critical = unit == "%" and widget.rfCriticalPercent or widget.rfCriticalDB,
+                x = (channel == 1 and 24 or 425) * sx, y = 220 * sy,
+                w = 350 * sx, h = 165 * sy,
+                dotX = math.min(sx, 1), dotY = math.min(sy, 1),
+            }
+        end
+        widget.rfGraphWork = work
+    end
+    if work.sampleIndex <= work.count then
+        local last = math.min(work.count, work.sampleIndex + GRAPH_SOURCE_STEPS - 1)
+        for index = work.sampleIndex, last do
+            local time = history.times[index] or 0
+            local bin = math.max(1, math.min(GRAPH_BINS,
+                math.floor(time * work.binScale) + 1))
+            for channel = 1, 2 do
+                local graph = work.channels[channel]
+                local value, missing = graph.readings[index], graph.missing[index]
+                local entry = graph.bins[bin]
+                if not entry then entry = {}; graph.bins[bin] = entry end
+                if value ~= nil and (entry.value == nil or value < entry.value) then
+                    entry.value, entry.time = value, time
+                end
+                entry.gap = entry.gap or value == nil or missing
+            end
+        end
+        work.sampleIndex = last + 1
+        return false
+    end
+    local last = math.min(GRAPH_BINS, work.binIndex + GRAPH_BIN_STEPS - 1)
+    for index = work.binIndex, last do
+        for channel = 1, 2 do
+            local graph = work.channels[channel]
+            local entry = graph.bins[index]
+            if entry then
+                if entry.value ~= nil then
+                    local px = round(graph.x + clamp(entry.time / work.total, 0, 1) * graph.w)
+                    local py = round(graph.y + graph.h - clamp((entry.value - graph.minimum)
+                        / math.max(1, graph.maximum - graph.minimum), 0, 1) * graph.h)
+                    local tone = entry.value <= graph.critical and 3
+                        or (entry.value <= graph.warning and 2 or 1)
+                    local segments, offset = graph.segments, #graph.segments
+                    if graph.previousX and not graph.previousGap and not entry.gap then
+                        segments[offset + 1], segments[offset + 2] = graph.previousX, graph.previousY
+                        segments[offset + 3], segments[offset + 4] = px, py
+                        segments[offset + 6] = 1
+                    else
+                        segments[offset + 1], segments[offset + 2] =
+                            round(px - graph.dotX), round(py - graph.dotY)
+                        segments[offset + 3], segments[offset + 4] =
+                            round(2 * graph.dotX), round(2 * graph.dotY)
+                        segments[offset + 6] = 0
+                    end
+                    segments[offset + 5] = tone
+                    graph.previousX, graph.previousY, graph.previousGap = px, py, entry.gap
+                else
+                    graph.previousX, graph.previousY, graph.previousGap = nil, nil, true
+                end
+            end
+        end
+    end
+    work.binIndex = last + 1
+    if work.binIndex <= GRAPH_BINS then return false end
+    for channel = 1, 2 do
+        local graph = work.channels[channel]
+        graph.bins, graph.readings, graph.missing = nil, nil, nil
+    end
+    widget.rfGraphs, widget.rfGraphWork = work, nil
+    return true
+end
+
 local function wakeup(widget)
     local clock = os.clock()
     if clock < widget.nextPoll then return end
@@ -895,6 +1013,7 @@ local function wakeup(widget)
     data.graph2 = sample(widget.graph2Source or widget.rssi2Source, "signal")
     if widget.preview then data.rpm, data.rpmDisplay, data.watts, data.cellVoltage = 8300, 8300, 414.96, 3.8 end
     updateFlight(widget, data, clock, key)
+    local graphDirty = prepareFlightGraphs(widget, clock)
     if widget.bottomSource then
         data.bottomValue = sample(widget.bottomSource)
         data.bottomName, data.bottomUnit, data.bottomDecimals =
@@ -905,7 +1024,7 @@ local function wakeup(widget)
     end
     if widget.bottomLabel ~= "" then data.bottomName = widget.bottomLabel end
     if widget.bottomDecimals >= 0 then data.bottomDecimals = widget.bottomDecimals end
-    local dirty = widget.refresh
+    local dirty = widget.refresh or graphDirty
     for key, value in pairs(data) do
         if widget.data[key] ~= value then dirty = true end
     end
@@ -1136,9 +1255,7 @@ end
 local function drawFlightGraph(widget, colors, flight, channel, x, y, width, height, sx, sy)
     local unit = channel == 1 and flight.unit1 or flight.unit2
     unit = unit ~= "" and unit or "dB"
-    local history = flight.history
-    local readings = channel == 1 and history.rf1 or history.rf2
-    local missing = channel == 1 and history.missing1 or history.missing2
+    unit = unit or "dB"
     local minimumValue = unit == "%" and 0 or widget.signalMinimum
     local maximumValue = unit == "%" and 100 or widget.signalMaximum
     local warning = unit == "%" and widget.rfWarnPercent or widget.rfWarnDB
@@ -1147,29 +1264,38 @@ local function drawFlightGraph(widget, colors, flight, channel, x, y, width, hei
     text(x, y - 24 * sy, "RF" .. channel .. "  MIN " .. valueText(low, 0) .. unit,
         width, 19 * sy, colors.secondary, LEFT, nil, true)
     rect(x, y, width, height, colors.track)
-    local function graphY(value)
-        return y + height - clamp((value - minimumValue) / math.max(1, maximumValue - minimumValue), 0, 1) * height
-    end
-    for _, level in ipairs({warning, critical}) do
-        lcd.color(level == critical and COLORS.red or COLORS.yellow)
-        lcd.drawLine(round(x), round(graphY(level)), round(x + width), round(graphY(level)))
-    end
-    local total = math.max(1, flight.elapsed or (os.clock() - flight.started))
-    local previousX, previousY, previousGap
-    for index = 1, history.count do
-        local value = readings[index]
-        if value ~= nil then
-            local pointX, pointY = x + clamp(history.times[index] / total, 0, 1) * width, graphY(value)
-            lcd.color(value <= critical and COLORS.red or (value <= warning and COLORS.yellow or colors.accent))
-            if previousX and not previousGap and not missing[index] then
-                lcd.drawLine(round(previousX), round(previousY), round(pointX), round(pointY))
+    local range = math.max(1, maximumValue - minimumValue)
+    lcd.color(COLORS.yellow)
+    local warningY = round(y + height - clamp((warning - minimumValue) / range, 0, 1) * height)
+    lcd.drawLine(round(x), warningY, round(x + width), warningY)
+    lcd.color(COLORS.red)
+    local criticalY = round(y + height - clamp((critical - minimumValue) / range, 0, 1) * height)
+    lcd.drawLine(round(x), criticalY, round(x + width), criticalY)
+    local ready = widget.rfGraphs
+    if ready and (ready.flight ~= flight or ready.width ~= widget.graphWidth
+        or ready.height ~= widget.graphHeight) then ready = nil end
+    if ready then
+        local segments = ready.channels[channel].segments
+        local tones = {colors.accent, COLORS.yellow, COLORS.red}
+        local previousTone
+        -- At most 48 primitives per channel: no history scan or per-point geometry.
+        for index = 1, #segments, 6 do
+            local tone = tones[segments[index + 4]]
+            if tone ~= previousTone then lcd.color(tone); previousTone = tone end
+            if segments[index + 5] == 1 then
+                lcd.drawLine(segments[index], segments[index + 1],
+                    segments[index + 2], segments[index + 3])
             else
-                rect(pointX - math.min(sx, 1), pointY - math.min(sy, 1),
-                    2 * math.min(sx, 1), 2 * math.min(sy, 1), value <= critical and COLORS.red or colors.accent)
+                lcd.drawFilledRectangle(segments[index], segments[index + 1],
+                    segments[index + 2], segments[index + 3])
             end
-            previousX, previousY, previousGap = pointX, pointY, missing[index]
-        else previousX, previousY, previousGap = nil, nil, true end
+        end
+    else
+        text(x + width / 2, y + height / 2, "Preparing RF trace...",
+            width - 16 * sx, 18 * sy, colors.secondary, CENTERED, nil, true)
     end
+    local total = ready and ready.total
+        or math.max(1, math.floor(flight.elapsed or (os.clock() - flight.started)))
     text(x, y + height + 6 * sy, "0s", 40 * sx, 14 * sy, colors.secondary, LEFT, nil, true)
     text(x + width, y + height + 6 * sy, timerText(total), 80 * sx, 14 * sy,
         colors.secondary, RIGHT, nil, true)
@@ -1208,7 +1334,7 @@ local function paintFlight(widget, colors, sx, sy)
         drawFlightGraph(widget, colors, flight, 2, 425 * sx, 220 * sy, 350 * sx, 165 * sy, sx, sy)
         text(24 * sx, 419 * sy, "KV POTENTIAL MAX " .. valueText(flight.maxPotential, 0)
             .. " rpm (not measured)", 752 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
-        text(24 * sx, 441 * sy, "RF minimum bins; gaps mean missing data. Visual limits only.",
+        text(24 * sx, 441 * sy, "RF: 48 minimum bins/channel; gaps = missing data. Visual limits only.",
             752 * sx, 17 * sy, colors.secondary, LEFT, nil, true)
     end
     text(24 * sx, 463 * sy, "Widget menu: Dashboard / Flight log", 750 * sx, 14 * sy,
@@ -1217,6 +1343,7 @@ end
 
 local function paint(widget)
     local w, h = lcd.getWindowSize()
+    widget.graphWidth, widget.graphHeight = w, h
     local sx, sy = w / 800, h / 480
     local colors, data = palette(widget), widget.data
     rect(0, 0, w, h, colors.background)
@@ -1486,6 +1613,7 @@ end
 
 local function destroy(widget)
     widget.modelImage, widget.valueFont, widget.flightSession = nil, nil, nil
+    widget.rfGraphs, widget.rfGraphWork = nil, nil
     if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then FLIGHT_SESSION.owner = nil end
     collectResources()
 end
