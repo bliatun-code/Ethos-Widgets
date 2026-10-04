@@ -3,10 +3,10 @@
 ## VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS.
 
-**VoltDeck 2026.8-v2: first public release. Physical X20RS/model testing
-passed, confirmed by the owner on 2026-10-02.**
+**VoltDeck 2026.10-v2: latest release. Physical X20RS/model testing
+passed, confirmed by the owner on 2026-10-05.**
 
-[Download VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) | [Release notes](https://github.com/bliatun-code/Ethos-Widgets/releases/tag/voltdeck-2026.8-v2)
+[Download VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) | [Release notes](https://github.com/bliatun-code/Ethos-Widgets/releases/tag/voltdeck-2026.10-v2)
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
 
@@ -43,12 +43,13 @@ The Ultimate AMR picture is documentation artwork, not a required widget asset.
 - Measured RPM, a labelled KV estimate, Watts, average cell voltage or custom telemetry.
 - Numeric and retro LCD presentation; one, two or three supported metrics.
 - Optional per-model flight counter, session peaks and last-flight RF graphs.
+- Optional automatic flight-log opening after sustained pack-voltage loss.
 - Source-named RSSI/VFR readings, correct inactive units and per-slot visual profiles.
 - Readable Lua source. No bundled bytecode, fonts, sounds or runtime artwork.
 
 ## Install VoltDeck
 
-1. Download [VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) from the release assets, not GitHub's automatically generated source archive.
+1. Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the release assets, not GitHub's automatically generated source archive.
 2. Extract its `scripts/VoltDeck` folder onto the radio SD card so the final path is `scripts/VoltDeck/main.lua`.
 3. Restart ETHOS, create a full-screen widget area and select **VoltDeck**.
 4. Configure the sensors and battery capacity for that particular model.
@@ -82,6 +83,19 @@ delay, for example 30 s, if needed. No battery-swap sensor is implied.
 This synthetic simulator snapshot still shows count 1 and the previous flight
 while the next candidate qualifies. [See all four transitions](docs/Configuration.md#illustrated-pack-session-transitions).
 
+### Optional automatic flight log
+
+Enable **Auto-open log** under **Flight log** (default Off), then set
+**Extra log delay** (default 5 s, range 0-120 s). This additional delay starts
+after **Pack loss delay** completes a qualified session. Returning pack voltage
+or a manual view/settings change cancels pending navigation.
+See the [configuration guide](docs/Configuration.md#automatic-flight-log-view).
+
+2026.10-v2 also handles cleanup without a widget instance, fixing the nil
+`widget` error reported on 2026.9-v2. The owner confirmed physical-radio
+testing of the complete update on 2026-10-05. All 53 focused regression cases
+and 25 native ETHOS simulator cases passed, including a simulator restart.
+
 ## RF names and visual profiles
 
 Names follow the selected source, for example **RSSI 2.4G** or **VFR 900M**.
@@ -95,7 +109,7 @@ See the [RF explanation](docs/Configuration.md#11-vfr-graphs-instead-of-rssi).
 ## Safety and compatibility
 
 Simulator target: **FrSky X20RS, ETHOS 26.1.2**.
-The owner reported that physical X20RS/model testing passed on 2026-10-02.
+The owner reported that physical X20RS/model testing passed on 2026-10-05.
 This is a project test report, not universal compatibility or safety certification.
 Other radio/firmware combinations are not yet confirmed.
 Keep native telemetry alarms, failsafe and pre-flight checks enabled.
@@ -107,10 +121,10 @@ RF rendering is bounded: up to 180 history points are reduced to at most
 no averaging hides brief lows. Geometry is prepared over several wakeups,
 then paint draws cached primitives. Live traces can lag by a few seconds.
 The updated RF examples use 180 synthetic input points. The owner separately
-confirmed that physical X20RS/model testing of 2026.8-v2 passed on 2026-10-02.
+confirmed that physical X20RS/model testing of 2026.10-v2 passed on 2026-10-05.
 Other hardware, firmware and model setups still need their own checks.
 
-The release packages the same 2026.8-v2 Lua source that the owner tested.
+The release packages the same 2026.10-v2 Lua source that the owner tested.
 Documentation and example-image updates do not change the widget code.
 
 ## License and publication boundary

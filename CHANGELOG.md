@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026.10-v2 - release, 2026-10-05
+
+- Fix `destroy()` when called without a created widget instance, which previously raised a nil `widget` error (line 1891 in 2026.9-v2).
+- Keep ordinary cleanup and flight ownership release intact; empty cleanup cannot reset the flight, counter, retained log or pending automatic view.
+- Add focused lifecycle coverage and native simulator lifecycle probes alongside the existing transition tests.
+- The owner confirmed that the complete 2026.10-v2 update passed testing on the physical X20RS on 2026-10-05.
+- Include optional Auto-open log and Extra log delay introduced in 2026.9-v2; defaults remain Off and 5 s.
+- All 53 focused Lua regression cases and 25 native ETHOS simulator cases passed; the native suite also passed after restart.
+- Publish VoltDeck-2026.10-v2.zip with Lua source, installation instructions, license and notices. No compiled bytecode or private fixtures are bundled.
+
+## 2026.9-v2 - development, included in 2026.10-v2, 2026-10-04
+
+- Add optional per-model Auto-open log, default Off.
+- Add Extra log delay: 5 s by default, adjustable 0-120 s after Pack loss delay completes a qualified session.
+- Cancel pending navigation when pack voltage returns or the user changes view/settings, disables logging or switches model.
+- Keep each auto-open one-shot and preserve the existing count, retained log and RF history.
+- Read both 2026.8 and earlier checked settings with new options defaulted safely.
+- Add focused regression and private native-simulator transition coverage; no synthetic fixture is distributed.
+- Leave released VoltDeck-2026.8-v2.zip and its physical-test confirmation unchanged.
+- The owner confirmed automatic opening on the physical radio on 2026-10-04; the separately observed cleanup error is addressed in 2026.10-v2.
+
 ## 2026.8-v2 - first public release, 2026-10-02
 The owner confirmed that physical X20RS/model testing passed on 2026-10-02.
 All 11 native ETHOS simulator transition stages and 14 focused Lua regression
