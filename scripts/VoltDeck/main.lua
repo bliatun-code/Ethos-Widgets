@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.8-v2"
+local VERSION = "2026.10-v2"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -57,8 +57,10 @@ local SETTINGS = {
     "highThrottleSeconds", "endDelay", "throttleMinimum", "throttleMaximum",
     "rfWarnDB", "rfCriticalDB", "rfWarnPercent", "rfCriticalPercent",
     "rf1Profile", "rf2Profile", "rf2WarnDB", "rf2CriticalDB", "rf2WarnPercent", "rf2CriticalPercent",
+    "autoLogEnabled", "autoLogDelay",
 }
-local LEGACY_SETTINGS_COUNT = #SETTINGS - 6
+local PRE_AUTO_SETTINGS_COUNT = #SETTINGS - 2
+local LEGACY_SETTINGS_COUNT = PRE_AUTO_SETTINGS_COUNT - 6
 
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -148,7 +150,7 @@ local function create()
         deckMode = 6, rpmMode = 1, motorKV = 0, loadFactor = 100, rpmScale = 1,
         rpmMaximum = 12000, wattMaximum = 2000, cellMaximum = 440,
         logEnabled = false, flightMinimum = 60, throttleThreshold = 50,
-        highThrottleSeconds = 5, endDelay = 10,
+        highThrottleSeconds = 5, endDelay = 10, autoLogEnabled = false, autoLogDelay = 5,
         throttleMinimum = -1024, throttleMaximum = 1024,
         rfWarnDB = 35, rfCriticalDB = 32, rfWarnPercent = 95, rfCriticalPercent = 50,
         rf1Profile = 1, rf2Profile = 1,
@@ -229,9 +231,10 @@ local function configRecord(key, bytes)
         end
         values[name], count = value, count + 1
     end
-    if count ~= #SETTINGS and count ~= LEGACY_SETTINGS_COUNT then return nil end
-    local required = count == LEGACY_SETTINGS_COUNT and LEGACY_SETTINGS_COUNT or #SETTINGS
-    for index = 1, required do if values[SETTINGS[index]] == nil then return nil end end
+    if count ~= #SETTINGS and count ~= PRE_AUTO_SETTINGS_COUNT
+        and count ~= LEGACY_SETTINGS_COUNT then return nil end
+    for index = 1, count do if values[SETTINGS[index]] == nil then return nil end end
+    if count < #SETTINGS then values.autoLogEnabled, values.autoLogDelay = false, 5 end
     if count == LEGACY_SETTINGS_COUNT then
         -- Preserve pre-upgrade limits; a new preset requires explicit selection.
         values.rf1Profile, values.rf2Profile = 3, 3
@@ -340,7 +343,7 @@ local function read(widget)
     elseif finite(first) then
         -- Original scalar-first record. Preserve its original write order.
         legacy[SETTINGS[1]] = first
-        for index = 2, #SETTINGS do legacy[SETTINGS[index]] = storage.read(SETTINGS[index]) end
+        for index = 2, PRE_AUTO_SETTINGS_COUNT do legacy[SETTINGS[index]] = storage.read(SETTINGS[index]) end
         for _, key in ipairs(SOURCE_KEYS) do native[key] = storage.read(key) end
         storage.read("battVersion")
     elseif first == nil then
@@ -414,6 +417,9 @@ local function read(widget)
     widget.rf2WarnPercent = numberSetting("rf2WarnPercent", widget.rfWarnPercent, 1, 100)
     widget.rf2CriticalPercent = numberSetting("rf2CriticalPercent", widget.rfCriticalPercent, 0, 99)
     widget.logEnabled = settingRead("logEnabled") == true
+    widget.autoLogEnabled = settingRead("autoLogEnabled") == true
+    widget.autoLogDelay = numberSetting("autoLogDelay", 5, 0, 120)
+    widget.autoLogSession, widget.autoLogSeen, widget.autoLogDue = nil, nil, nil
     if widget.throttleMaximum <= widget.throttleMinimum then widget.throttleMaximum = widget.throttleMinimum + 1 end
     if widget.rfCriticalDB > widget.rfWarnDB then widget.rfCriticalDB = widget.rfWarnDB end
     if widget.rfCriticalPercent > widget.rfWarnPercent then widget.rfCriticalPercent = widget.rfWarnPercent end
@@ -904,7 +910,11 @@ local function updateFlight(widget, data, clock, key)
         if flight.lossSince and clock - flight.lossSince >= widget.endDelay then
             flight.elapsed = clock - flight.started
             flight.running = false
-            if flight.counted then session.last = flight end
+            if flight.counted then
+                session.last = flight
+                session.completedSerial = (session.completedSerial or 0) + 1
+                session.completedAt = clock
+            end
             session.current = nil
             session.revision = session.revision + 1
         end
@@ -927,6 +937,41 @@ local function updateFlight(widget, data, clock, key)
             or (flight.running and "Qualifying" or "Qualify paused")))
         or (session.last and "Pack complete") or "Ready"
     data.logRevision = session.revision
+end
+
+-- Only a newly completed qualified pack session may schedule this one-shot view.
+-- Keep no extra flight/history copy, and do not revisit old logs when enabling it.
+local function cancelAutoLog(widget)
+    widget.autoLogDue = nil
+end
+
+local function updateAutoLog(widget, data, clock, key)
+    local session = widget.flightSession
+    if session ~= widget.autoLogSession then
+        widget.autoLogSession = session
+        widget.autoLogSeen = session and (session.completedSerial or 0) or 0
+        cancelAutoLog(widget)
+    end
+    if not session or session.key ~= key or not widget.logEnabled or widget.preview then
+        cancelAutoLog(widget)
+        return
+    end
+    local serial = session.completedSerial or 0
+    if serial ~= widget.autoLogSeen then
+        widget.autoLogSeen = serial
+        if widget.autoLogEnabled and session.completedAt and session.last
+            and data.voltage == nil then
+            widget.autoLogDue = session.completedAt + widget.autoLogDelay
+        end
+    end
+    if not widget.autoLogEnabled or data.voltage ~= nil or session.current or not session.last then
+        cancelAutoLog(widget)
+        return
+    end
+    if widget.autoLogDue and clock >= widget.autoLogDue then
+        cancelAutoLog(widget)
+        widget.logVisible, widget.diagnosticsVisible, widget.refresh = true, false, true
+    end
 end
 
 local function alarm(widget, data, clock)
@@ -1142,6 +1187,7 @@ local function wakeup(widget)
     data.graph2 = sample(graphSource2, "signal")
     if widget.preview then data.rpm, data.rpmDisplay, data.watts, data.cellVoltage = 8300, 8300, 414.96, 3.8 end
     updateFlight(widget, data, clock, key)
+    updateAutoLog(widget, data, clock, key)
     updateFlightDiagnostics(widget, data, key)
     local graphDirty = prepareFlightGraphs(widget, clock)
     if widget.bottomSource then
@@ -1658,6 +1704,7 @@ local function colorField(widget, label, key)
 end
 
 local function configure(widget)
+    cancelAutoLog(widget)
     widget.configPanel = nil
     form.addLine("VoltDeck " .. VERSION)
     local function group(label)
@@ -1672,7 +1719,11 @@ local function configure(widget)
     local function boolean(label, key, alarmReset)
         local line = form.addLine(label, widget.configPanel)
         form.addBooleanField(line, nil, function() return widget[key] end,
-            function(value) widget[key] = value; changed(widget, alarmReset) end)
+            function(value)
+                widget[key] = value
+                if key == "autoLogEnabled" or key == "logEnabled" or key == "preview" then cancelAutoLog(widget) end
+                changed(widget, alarmReset)
+            end)
     end
     local function sourceField(label, key, alarmReset)
         local line = form.addLine(label, widget.configPanel)
@@ -1792,6 +1843,9 @@ local function configure(widget)
     numberField(widget, "High throttle", "highThrottleSeconds", 1, 120, "s", 1)
     -- Keep the checked settings key/order compatible with earlier builds.
     numberField(widget, "Pack loss delay", "endDelay", 3, 120, "s", 1)
+    boolean("Auto-open log", "autoLogEnabled")
+    numberField(widget, "Extra log delay", "autoLogDelay", 0, 120, "s", 1)
+    note("Extra delay after Pack loss delay; qualified flights only.")
     sourceField("RF graph 1", "graph1Source")
     sourceField("RF graph 2", "graph2Source")
     note("Arm + >=60s + >=50% throttle for >=5s by default.")
@@ -1834,6 +1888,9 @@ local function configure(widget)
 end
 
 local function destroy(widget)
+    -- ETHOS may request cleanup without a created widget instance.
+    if type(widget) ~= "table" then return end
+    widget.autoLogSession, widget.autoLogSeen, widget.autoLogDue = nil, nil, nil
     widget.modelImage, widget.valueFont, widget.flightSession = nil, nil, nil
     widget.rfGraphs, widget.rfGraphWork = nil, nil
     if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then
@@ -1846,12 +1903,14 @@ end
 local function menu(widget)
     return {
         {(widget.logVisible or widget.diagnosticsVisible) and "Dashboard" or "Flight log", function()
+            cancelAutoLog(widget)
             if widget.diagnosticsVisible then widget.logVisible = false
             else widget.logVisible = not widget.logVisible end
             widget.diagnosticsVisible, widget.refresh = false, true
             lcd.invalidate()
         end},
         {"Flight diagnostics", function()
+            cancelAutoLog(widget)
             widget.diagnosticsVisible, widget.logVisible, widget.refresh = true, false, true
             lcd.invalidate()
         end},
