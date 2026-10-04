@@ -16,8 +16,8 @@
 - Optional per-model flight counter and bounded RF history.
 - Source-named RSSI/VFR readings and independent visual signal profiles.
 
-VoltDeck 2026.8-v2 is the first public release. The owner confirmed that
-physical X20RS/model testing passed on 2026-10-02. The readable Lua source
+VoltDeck 2026.10-v2 is the latest release. The owner confirmed that
+physical X20RS/model testing passed on 2026-10-05. The readable Lua source
 remains available under MIT; other equipment and firmware need their own tests.
 
 See the [illustrated configuration guide](Configuration.md) or the
@@ -25,8 +25,8 @@ See the [illustrated configuration guide](Configuration.md) or the
 
 ## Installation
 
-Download [VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) from the
-[release assets](https://github.com/bliatun-code/Ethos-Widgets/releases/tag/voltdeck-2026.8-v2). Use the named widget package,
+Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the
+[release assets](https://github.com/bliatun-code/Ethos-Widgets/releases/tag/voltdeck-2026.10-v2). Use the named widget package,
 not the automatically generated repository source archive. Extract its
 `scripts/VoltDeck` folder onto the SD card, preserving this structure:
 
@@ -146,8 +146,29 @@ RF rendering is bounded: up to 180 history points are reduced to at most
 no averaging hides brief lows. Geometry is prepared over several wakeups,
 then paint draws cached primitives. Live traces can lag by a few seconds.
 The updated RF examples use 180 synthetic input points. The owner separately
-confirmed that physical X20RS/model testing of 2026.8-v2 passed on 2026-10-02.
+confirmed that physical X20RS/model testing of 2026.10-v2 passed on 2026-10-05.
 Other hardware, firmware and model setups still need their own checks.
+
+### Automatic flight-log view
+
+In **Flight log**, enable **Auto-open log** (default Off) and set **Extra log
+delay** (default 5 s, range 0-120 s). This is additional time after **Pack loss
+delay**, not a replacement for it. With 10 s + 5 s, the log opens about 15 s
+after continuous loss of valid pack voltage. Zero extra delay opens it when
+the qualified session ends.
+
+Only a newly completed qualified flight triggers the change. Missing telemetry
+at startup, short outages and rejected bench candidates do not. Returning valid
+pack voltage, changing model, disabling logging/auto-open, preview, opening
+configuration or manually choosing a view cancels a pending change. It happens
+once per completed flight; returning to Dashboard will not reopen the same log.
+This changes the view inside VoltDeck, not the radio's active main page.
+
+This feature is included in the 2026.10-v2 release. The owner confirmed
+automatic opening on the physical radio on 2026-10-04 and the complete
+2026.10-v2 update, including the cleanup correction, on 2026-10-05.
+53 focused regression cases and 25 native ETHOS simulator cases passed;
+the native suite also passed after restarting the simulator.
 
 ## RF sources and profiles
 

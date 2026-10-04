@@ -11,13 +11,13 @@ A private simulator fixture supplies values and a fabricated last-flight
 record. It does not write an actual flight count. No fixture is distributed.
 The pack-transition series instead snapshots the normal flight callbacks
 with synthetic inputs and a RAM-only private test counter. Neither set is
-a recorded flight. This guide covers release 2026.8-v2. The owner separately
-confirmed physical X20RS/model testing passed on 2026-10-02; the pictures
+a recorded flight. This guide covers release 2026.10-v2. The owner separately
+confirmed physical X20RS/model testing passed on 2026-10-05; the pictures
 remain synthetic simulator examples, not evidence from that radio test.
 
 ## 1. Start with the model and battery
 
-Download the named [VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) package,
+Download the named [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) package,
 extract its `scripts/VoltDeck` folder onto the SD card, then select **VoltDeck** in a full-screen
 widget area and open its configuration. The visible model name comes from
 the active ETHOS model, not hard-coded text.
@@ -301,7 +301,7 @@ RF rendering is bounded: up to 180 history points are reduced to at most
 no averaging hides brief lows. Geometry is prepared over several wakeups,
 then paint draws cached primitives. Live traces can lag by a few seconds.
 The updated RF examples use 180 synthetic input points. The owner separately
-confirmed that physical X20RS/model testing of 2026.8-v2 passed on 2026-10-02.
+confirmed that physical X20RS/model testing of 2026.10-v2 passed on 2026-10-05.
 Other hardware, firmware and model setups still need their own checks.
 
 ## 12. Configure flight detection for the actual model
@@ -317,6 +317,8 @@ Other hardware, firmware and model setups still need their own checks.
 | Throttle gate | 50% |
 | High throttle | 5 s cumulative |
 | Pack loss delay | 10 s (continuous missing pack voltage) |
+| Auto-open log  | Off |
+| Extra log delay  | 5 s after session completion |
 | RF graph 1 / 2 | RSSI or VFR sources for that model |
 
 Set **Throttle low (raw) / high (raw)** to the actual `source:value()`
@@ -350,6 +352,27 @@ still shows the previous statistics/graphs. Only successful new qualification
 replaces it. A failed candidate does not erase the last qualified record.
 Radio restart still clears RAM-only logs. Resetting the persistent counter
 requires logging enabled, motor disarmed and the pack session ended after disconnect.
+
+### Automatic flight-log view
+
+In **Flight log**, enable **Auto-open log** (default Off) and set **Extra log
+delay** (default 5 s, range 0-120 s). This is additional time after **Pack loss
+delay**, not a replacement for it. With 10 s + 5 s, the log opens about 15 s
+after continuous loss of valid pack voltage. Zero extra delay opens it when
+the qualified session ends.
+
+Only a newly completed qualified flight triggers the change. Missing telemetry
+at startup, short outages and rejected bench candidates do not. Returning valid
+pack voltage, changing model, disabling logging/auto-open, preview, opening
+configuration or manually choosing a view cancels a pending change. It happens
+once per completed flight; returning to Dashboard will not reopen the same log.
+This changes the view inside VoltDeck, not the radio's active main page.
+
+This feature is included in the 2026.10-v2 release. The owner confirmed
+automatic opening on the physical radio on 2026-10-04 and the complete
+2026.10-v2 update, including the cleanup correction, on 2026-10-05.
+53 focused regression cases and 25 native ETHOS simulator cases passed;
+the native suite also passed after restarting the simulator.
 
 ### Illustrated pack-session transitions
 

@@ -2,8 +2,8 @@
 
 [Alle bilder og detaljer](Configuration.md) | [Installasjon](VoltDeck.md)
 
-**VoltDeck 2026.8-v2: første offentlige release. Test på fysisk X20RS med
-modell er bestått, bekreftet av eieren 2026-10-02.**
+**VoltDeck 2026.10-v2: siste release. Test på fysisk X20RS med
+modell er bestått, bekreftet av eieren 2026-10-05.**
 
 Bildene er fortsatt laget i ETHOS-simulatoren med syntetiske data, ikke fra
 en virkelig flyging. Testbekreftelsen gjelder eierens oppsett, ikke alle radioer.
@@ -12,7 +12,7 @@ en virkelig flyging. Testbekreftelsen gjelder eierens oppsett, ikke alle radioer
 
 ## Installasjon og grunnoppsett
 
-1. Last ned [VoltDeck-2026.8-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.8-v2/VoltDeck-2026.8-v2.zip) fra release-siden.
+1. Last ned [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) fra release-siden.
 2. Pakk ut `scripts/VoltDeck` til SD-kortet, slik at filen ligger som `scripts/VoltDeck/main.lua`.
 3. Start ETHOS på nytt og velg **VoltDeck** i et fullskjerms widgetfelt.
 4. Velg telemetrikildene for akkurat denne modellen.
@@ -131,6 +131,27 @@ RF-grafens tidsakse inkluderer motorpausene, mens flytiden bare øker når
 arm-, gate- og telemetrivillkårene passerer. For å nullstille telleren må logging
 være aktivert, motoren dearmert og pakkeøkten avsluttet etter frakobling.
 Widgeten endrer ikke motorstyring, failsafe eller radioens sikkerhetsfunksjoner.
+
+### Automatisk flylogg
+
+Under **Flight log** kan **Auto-open log** slås på (standard Av).
+**Extra log delay** er ekstra ventetid etter **Pack loss delay**:
+standard 5 s, valgbart 0-120 s. Med 10 s + 5 s åpnes flyloggen omtrent
+15 sekunder etter sammenhengende bortfall av gyldig batterispenning.
+Med 0 s ekstra åpnes den idet den kvalifiserte økten avsluttes.
+
+Bare en nylig avsluttet, kvalifisert flyging utløser dette. Manglende
+telemetri ved oppstart, korte bortfall og ukvalifiserte benktester gjør det ikke.
+Gyldig batterispenning tilbake, modellbytte, avslått logging/automatikk,
+forhåndsvisning, åpning av konfigurering eller manuelt visningsvalg avbryter
+ventingen. Overgangen skjer én gang; Dashboard åpner ikke samme logg på nytt.
+Det er visningen inne i VoltDeck som byttes, ikke radioens aktive hovedside.
+
+Funksjonen er med i release 2026.10-v2. Eieren bekreftet automatisk
+flylogg på fysisk radio 2026-10-04 og hele oppdateringen, inkludert
+rettelsen for opprydding uten widget-instans, 2026-10-05. Alle 53
+regresjonstilfeller og 25 tester i ETHOS-simulatoren bestod; simulatorens
+testserie bestod også etter omstart.
 
 ### Bilder av overgangene
 
