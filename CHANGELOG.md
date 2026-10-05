@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.10-v3 - release, 2026-10-05
+
+- Owner confirmed physical X20RS testing of the final RC1 build on 2026-10-05.
+- Major pre-publication hardening of the battery, flight-log and telemetry dashboard.
+- Unexpected consumed-mAh decreases become unknown instead of showing a falsely full battery; safe manual acknowledgement and sustained-power-loss boundaries.
+- Persistent alarm cooldowns, non-overlapping WAV playback and fair GasDeck RX/fuel scheduling.
+- Strict percent units, preview/live isolation, guarded disposed/nil callbacks and bounded native text/source caches.
+- Versioned checksummed per-model settings; no old scalar-settings migration. Reconfigure capacities, chemistry, limits, alarms and flight options. Source layouts and counter files retained.
+- Shared final check: 252 named automated checks across both widgets; preceding native simulator run: 84 functional cases and 120 production frames, zero failures.
+- GasDeck cold rendering optimized with unchanged graphics; PC simulator timings are not radio CPU guarantees.
+- Release code differs from the radio-tested RC1 only in displayed version/test-status strings.
+- ZIP includes scripts/VoltDeck/main.lua, INSTALL.txt, LICENSE and NOTICE.md; no bytecode, private helpers, settings, logs or model records.
+
 ## 2026.10-v2 - release, 2026-10-05
 
 - Fix `destroy()` when called without a created widget instance, which previously raised a nil `widget` error (line 1891 in 2026.9-v2).

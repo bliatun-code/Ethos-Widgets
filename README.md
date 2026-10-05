@@ -1,10 +1,10 @@
 # VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS.
 
-**VoltDeck 2026.10-v2: latest release. Physical X20RS/model testing
+**VoltDeck 2026.10-v3: latest release. Physical X20RS/model testing
 passed, confirmed by the owner on 2026-10-05.**
 
-[Download VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) | [Release notes](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v2)
+[Download VoltDeck-2026.10-v3.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v3/VoltDeck-2026.10-v3.zip) | [Release notes](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v3)
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
 
@@ -47,14 +47,13 @@ The Ultimate AMR picture is documentation artwork, not a required widget asset.
 
 ## Install VoltDeck
 
-1. Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the release assets, not GitHub's automatically generated source archive.
+1. Download [VoltDeck-2026.10-v3.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v3/VoltDeck-2026.10-v3.zip) from the release assets, not GitHub's automatically generated source archive.
 2. Extract its `scripts/VoltDeck` folder onto the radio SD card so the final path is `scripts/VoltDeck/main.lua`.
 3. Restart ETHOS, create a full-screen widget area and select **VoltDeck**.
 4. Configure the sensors and battery capacity for that particular model.
 
 The named ZIP includes the widget folder, installation instructions, license
-and notices. No standalone Lua download is needed. Keep existing per-model
-`.cfg` and `.dat` files when upgrading. If an older `main.luac` remains in
+and notices. No standalone Lua download is needed. **Upgrade warning:** This major version deliberately does not import old scalar settings. Back up the model and its cfg/dat files. Reconfigure capacity, chemistry, limits, alarms and flight options. New settings use `/scripts/vc3*.cfg` (VoltDeck) or `/scripts/gc1*.cfg` (GasDeck). Existing flight-counter files and current ordered ETHOS source assignments are retained; verify every source. Old cfg files are left untouched. Remove the old matching `main.luac` before restarting ETHOS. If an older `main.luac` remains in
 `scripts/VoltDeck`, remove only that generated file before restarting ETHOS
 so it can compile the installed source. Do not rename `main.lua` or install
 the private simulator helpers.
@@ -67,7 +66,7 @@ Motor disarming pauses qualification/flight time but retains the same pack
 session, its statistics and RF history. Rearming does not count another flight.
 Only continuous loss of valid positive pack voltage for **Pack loss delay**
 ends the session (default 10 s; adjustable 3-120 s).
-The previous **End delay** setting retains its saved value under this new name.
+Set **Pack loss delay** again when upgrading; older scalar settings are not migrated.
 
 The last qualified log stays visible after disconnecting the aircraft and while
 the next flight is qualifying. It is replaced only when that next flight qualifies.
@@ -89,10 +88,8 @@ after **Pack loss delay** completes a qualified session. Returning pack voltage
 or a manual view/settings change cancels pending navigation.
 See the [configuration guide](docs/Configuration.md#automatic-flight-log-view).
 
-2026.10-v2 also handles cleanup without a widget instance, fixing the nil
-`widget` error reported on 2026.9-v2. The owner confirmed physical-radio
-testing of the complete update on 2026-10-05. All 53 focused regression cases
-and 25 native ETHOS simulator cases passed, including a simulator restart.
+The v3 update guards nil/disposed callbacks, unexpected mAh resets, alarm cooldowns
+and checked model settings. The owner confirmed physical X20RS radio testing of the final RC1 builds on 2026-10-05. The shared final check passed 252 named automated checks; the preceding native ETHOS 26.1.2 simulator run passed 84 functional cases and 120 production-rendered frames. Counts cover both widgets, not 252 cases per widget. This is a project test report, not universal hardware compatibility or safety certification.
 
 ## RF names and visual profiles
 
@@ -101,7 +98,7 @@ Dashboard and flight-log sources can differ. Presets use RSSI low/critical
 35/32 dB for ACCESS/TD/TW or 45/42 dB for ACCST.
 The widget's VFR visual profile is yellow at <=95% and red at <=50%;
 95% is an early-quality marker, not FrSky's native alarm threshold.
-Existing model limits migrate to **Custom** without being silently replaced.
+Old scalar RF limits are not migrated. Select the intended profile or configure Custom limits again.
 See the [RF explanation](docs/Configuration.md#11-vfr-graphs-instead-of-rssi).
 
 ## Safety and compatibility
@@ -119,11 +116,11 @@ RF rendering is bounded: up to 180 history points are reduced to at most
 no averaging hides brief lows. Geometry is prepared over several wakeups,
 then paint draws cached primitives. Live traces can lag by a few seconds.
 The updated RF examples use 180 synthetic input points. The owner separately
-confirmed that physical X20RS/model testing of 2026.10-v2 passed on 2026-10-05.
+confirmed that physical X20RS/model testing of 2026.10-v3 passed on 2026-10-05.
 Other hardware, firmware and model setups still need their own checks.
 
-The release packages the same 2026.10-v2 Lua source that the owner tested.
-Documentation and example-image updates do not change the widget code.
+The release is based on the physically tested 2026.10-v3-rc1 source.
+Only the displayed version/test-status strings were changed for publication.
 
 ## License and publication boundary
 
