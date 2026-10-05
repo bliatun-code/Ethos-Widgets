@@ -2,7 +2,7 @@
 
 [Alle bilder og detaljer](Configuration.md) | [Installasjon](VoltDeck.md)
 
-**VoltDeck 2026.10-v2: siste release. Test på fysisk X20RS med
+**VoltDeck 2026.10-v3: siste release. Test på fysisk X20RS med
 modell er bestått, bekreftet av eieren 2026-10-05.**
 
 Bildene er fortsatt laget i ETHOS-simulatoren med syntetiske data, ikke fra
@@ -12,7 +12,7 @@ en virkelig flyging. Testbekreftelsen gjelder eierens oppsett, ikke alle radioer
 
 ## Installasjon og grunnoppsett
 
-1. Last ned [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) fra release-siden.
+1. Last ned [VoltDeck-2026.10-v3.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v3/VoltDeck-2026.10-v3.zip) fra release-siden.
 2. Pakk ut `scripts/VoltDeck` til SD-kortet, slik at filen ligger som `scripts/VoltDeck/main.lua`.
 3. Start ETHOS på nytt og velg **VoltDeck** i et fullskjerms widgetfelt.
 4. Velg telemetrikildene for akkurat denne modellen.
@@ -20,7 +20,7 @@ en virkelig flyging. Testbekreftelsen gjelder eierens oppsett, ikke alle radioer
 6. Nullstill forbruksteller når du kobler til et nytt eller oppladet batteri.
 
 Velg den navngitte widgetpakken, ikke GitHubs automatiske kildekodearkiv.
-Ved oppgradering beholder du modellens `.cfg`- og `.dat`-filer. Fjern bare
+**Viktig ved oppgradering:** Gamle tallinnstillinger importeres ikke i denne hovedversjonen. Ta sikkerhetskopi av modellen og cfg/dat-filene. Still inn kapasitet, batteritype, grenser, varsler og flyloggvalg på nytt. Nye innstillinger bruker `/scripts/vc3*.cfg` i VoltDeck eller `/scripts/gc1*.cfg` i GasDeck. Flytellere og gjeldende kildevalg kan beholdes; kontroller alle kildene. Gamle cfg-filer forblir urørt. Fjern gammel `main.luac` før ETHOS startes på nytt. Fjern bare
 eventuell gammel `scripts/VoltDeck/main.luac` før omstart, slik at radioen
 kompilerer den nye Lua-kilden. ZIP-pakken inneholder ingen bytekode.
 
@@ -115,7 +115,7 @@ en økt kan bare øke telleren én gang. Airborne gate av pauser også, uten sle
 
 Økten avsluttes først når gyldig, positiv pakkespenning mangler sammenhengende
 i **Pack loss delay**: standard 10 sekunder, valgbart fra 3 til 120 sekunder.
-Det tidligere **End delay** beholder sin lagrede verdi, men får nytt navn og
+Tidligere **End delay** importeres ikke i denne hovedversjonen; sett **Pack loss delay** på nytt. Valget har
 gjelder nå bare spenningsbortfall. Kortere bortfall nullstiller ikke økten.
 Vanlig spenningsfall under belastning, med fortsatt positiv verdi, avslutter
 ikke økten. Langt RF-/telemetribortfall kan ligne frakoblet batteri; velg gjerne
@@ -147,7 +147,7 @@ forhåndsvisning, åpning av konfigurering eller manuelt visningsvalg avbryter
 ventingen. Overgangen skjer én gang; Dashboard åpner ikke samme logg på nytt.
 Det er visningen inne i VoltDeck som byttes, ikke radioens aktive hovedside.
 
-Funksjonen er med i release 2026.10-v2. Eieren bekreftet automatisk
+Funksjonen er med i release 2026.10-v3. Eieren bekreftet automatisk
 flylogg på fysisk radio 2026-10-04 og hele oppdateringen, inkludert
 rettelsen for opprydding uten widget-instans, 2026-10-05. Alle 53
 regresjonstilfeller og 25 tester i ETHOS-simulatoren bestod; simulatorens
@@ -205,8 +205,7 @@ rammer fra båndene og er nyttig som samlet kvalitetsmål. Ett svakt bånd
 betyr ikke nødvendigvis at samlet forbindelse er like svak.
 Kilde: [FrSkys telemetriveiledning](https://ethos-doc.frsky-rc.com/model-setup/telemetry/).
 
-Eksisterende grenser beholdes som **Custom**, også eldre 95/90.
-Velg en profil selv hvis du ønsker nye grenser. Endrer du en grenseverdi,
+Gamle tallinnstillinger importeres ikke. Velg RF-profil eller sett **Custom**-grenser på nytt. Endrer du en grenseverdi,
 velges Custom automatisk for den RF-plassen. En flyging beholder grafkildene,
 navnene og enhetene som var valgt ved start; senere kildevalg blandes
 ikke inn i samme kurve.
@@ -262,3 +261,20 @@ Behold radioens egne alarmer, failsafe og sikkerhetskontroller.
 Bildene dokumenterer utseendet med syntetiske data. Testen på fysisk X20RS
 med modell er bekreftet bestått for 2026.8-v2. Dette er ikke en generell
 sikkerhetssertifisering; behold radioens egne alarmer og sjekk eget oppsett.
+
+
+## Sikkerhetsoppdatering, oktober 2026
+
+Eieren bekreftet bestått fysisk X20RS-radiotest av de siste RC1-pakkene den 2026-10-05. Sluttkontrollen passerte 252 automatiske kontrollpunkter for begge widgetene samlet; den native simulatorprøven passerte 84 funksjonstester og 120 skjermtegninger. Dette er ikke generell kompatibilitets- eller sikkerhetssertifisering.
+
+- Uventet nedgang i forbrukstelleren større enn 0,1 % av konfigurert kapasitet (minimum 1 mAh) gjør gjenværende kapasitet ukjent. Widgeten viser ikke automatisk fullt batteri ved en sensorreset.
+- En valgt batterispenningskilde må være borte like lenge som konfigurert avslutningsforsinkelse før tilbakekomst tillater en ny tellerbaseline. Korte telemetrigap, ARM-/tenningspauser og demo frigir ikke sperren. Langt RF-bortfall kan likevel ligne batteribytte; dette er ikke en fysisk batteridetektor.
+- Etter kontroll av faktisk lading og mAh-avlesning: meny **Accept battery counter...** i VoltDeck eller **Accept RX counters...** i GasDeck. Bekreftelse krever gyldig ARM AV eller tenning AV. Valget aksepterer avlesningen, men nullstiller ikke sensoren, endrer ikke faktisk lading og påvirker ikke flytellingen. Tankfylling i GasDeck er uavhengig.
+- Prosentkilden må ha prosentenhet, eventuelt eksplisitt råkilde uten enhet men med %-enhetstekst. Volt eller ampere kan ikke brukes som prosent.
+- Lydintervallet overlever korte tilbakekomster, manglende målinger og konfigurasjonsendringer. GasDeck gir RX første lydplass ved samtidige varsler, og veksler deretter mellom RX og drivstoff. Ingen WAV skal overlappe eller blokkere det andre varselet permanent.
+- Demo endrer ikke reelle maksimumsverdier, batterisperrer eller tankintegrasjon. Uobservert flow-gap gjør fremdeles estimatet ukjent og krever ny bekreftet tankfylling.
+- Lange tekster forkortes uten å kutte UTF-8-tegn. Tekstmåling har maksimalt 64 cacheoppføringer. Sensornavn oppdateres hvert femte sekund og ved kildebytte; sensorenheten følger kilden umiddelbart.
+
+### Kompatibilitet og sikkerhetskopi
+
+Denne hovedversjonen har bevisst ingen migrering av gamle innstillinger. Nye modellfiler bruker /scripts/vc3*.cfg i VoltDeck og /scripts/gc1*.cfg i GasDeck. Gamle vc*/gc*-filer blir verken lest, endret eller slettet; konfigurer de nye standardinnstillingene på nytt. Tellerfilene og det nåværende kildeformatet er uendret, slik at valgte kilder og flytellere kan beholdes uten import av gamle tallinnstillinger. Nye innstillingsfiler bruker VD5/GD2 og eksplisitt skjema 1; kildeheaderne forblir VD4/GD1. Ugyldige og ukjente fremtidige skjemaer overskrives ikke. Behold sikkerhetskopier og kontroller kapasitet, kjemi, skalaer, varsler og flylogggrenser på radioen. GasDeck flytter ikke reservert ARM til tenning. Private testhjelpere og modellspesifikke innstillinger følger ikke widgetpakken.

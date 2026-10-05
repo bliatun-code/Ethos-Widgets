@@ -16,7 +16,7 @@
 - Optional per-model flight counter and bounded RF history.
 - Source-named RSSI/VFR readings and independent visual signal profiles.
 
-VoltDeck 2026.10-v2 is the latest release. The owner confirmed that
+VoltDeck 2026.10-v3 is the latest release. The owner confirmed that
 physical X20RS/model testing passed on 2026-10-05. The readable Lua source
 remains available under MIT; other equipment and firmware need their own tests.
 
@@ -25,8 +25,8 @@ See the [illustrated configuration guide](Configuration.md) or the
 
 ## Installation
 
-Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the
-[release assets](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v2). Use the named widget package,
+Download [VoltDeck-2026.10-v3.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v3/VoltDeck-2026.10-v3.zip) from the
+[release assets](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v3). Use the named widget package,
 not the automatically generated repository source archive. Extract its
 `scripts/VoltDeck` folder onto the SD card, preserving this structure:
 
@@ -36,7 +36,7 @@ scripts/
     main.lua
 ```
 
-Keep existing per-model `.cfg` and `.dat` files when upgrading. If an older
+**Upgrade warning:** This major version deliberately does not import old scalar settings. Back up the model and its cfg/dat files. Reconfigure capacity, chemistry, limits, alarms and flight options. New settings use `/scripts/vc3*.cfg` (VoltDeck) or `/scripts/gc1*.cfg` (GasDeck). Existing flight-counter files and current ordered ETHOS source assignments are retained; verify every source. Old cfg files are left untouched. Remove the old matching `main.luac` before restarting ETHOS. If an older
 `scripts/VoltDeck/main.luac` remains, remove only that generated file before
 restarting ETHOS so the radio compiles the installed source. No compiled
 bytecode is shipped.
@@ -46,7 +46,7 @@ The folder and displayed name are VoltDeck. The internal key is vdeck:
 ETHOS limits widget keys to seven characters, so VoltDeck is too long there.
 When upgrading from the experimental Batt-key build, select VoltDeck again
 in the widget area and reselect its telemetry sources. Per-model scalar
-settings retain their existing file identity.
+settings use the new vc3 namespace; old scalar settings are not imported.
 
 Select telemetry sources in the widget configuration. No model-specific
 sensor configuration or model BIN is distributed with the widget.
@@ -84,7 +84,7 @@ it cannot identify an individual weak cell.
 ## Model settings and backups
 
 Scalar settings are stored in a pair of checked per-model files beneath
-scripts, with names of the form vc<model-id>a.cfg and vc<model-id>b.cfg.
+scripts, with names of the form vc3<model-id>a.cfg and vc3<model-id>b.cfg.
 Sensor selections stay in the native model/widget record.
 The flight counter, when enabled, uses separate per-model persistent state.
 Last-flight graphs stay in RAM.
@@ -118,8 +118,7 @@ the airborne gate pauses qualification/flight time, without clearing the count
 latch, statistics or RF history. Valid pack voltage returning before the loss
 delay resumes that same session. Only continuous missing/invalid/non-positive
 pack voltage for **Pack loss delay** ends it (default 10 s, configurable 3-120 s).
-The old End delay storage key and saved value are retained for compatibility;
-the setting no longer terminates a session on motor disarm.
+Configure Pack loss delay again in this major version; it does not end a session on motor disarm.
 
 An extended telemetry loss can look like a battery disconnect, and a swap shorter
 than the configured delay cannot reliably be detected. Increase the delay, for
@@ -146,7 +145,7 @@ RF rendering is bounded: up to 180 history points are reduced to at most
 no averaging hides brief lows. Geometry is prepared over several wakeups,
 then paint draws cached primitives. Live traces can lag by a few seconds.
 The updated RF examples use 180 synthetic input points. The owner separately
-confirmed that physical X20RS/model testing of 2026.10-v2 passed on 2026-10-05.
+confirmed that physical X20RS/model testing of 2026.10-v3 passed on 2026-10-05.
 Other hardware, firmware and model setups still need their own checks.
 
 ### Automatic flight-log view
@@ -164,11 +163,7 @@ configuration or manually choosing a view cancels a pending change. It happens
 once per completed flight; returning to Dashboard will not reopen the same log.
 This changes the view inside VoltDeck, not the radio's active main page.
 
-This feature is included in the 2026.10-v2 release. The owner confirmed
-automatic opening on the physical radio on 2026-10-04 and the complete
-2026.10-v2 update, including the cleanup correction, on 2026-10-05.
-53 focused regression cases and 25 native ETHOS simulator cases passed;
-the native suite also passed after restarting the simulator.
+This feature remains included in 2026.10-v3. The owner confirmed physical X20RS radio testing of the final RC1 builds on 2026-10-05. The shared final check passed 252 named automated checks; the preceding native ETHOS 26.1.2 simulator run passed 84 functional cases and 120 production-rendered frames. Counts cover both widgets, not 252 cases per widget. This is a project test report, not universal hardware compatibility or safety certification.
 
 ## RF sources and profiles
 
@@ -182,8 +177,8 @@ Custom uses independent limits per slot. VFR presets use 95% early quality
 and 50% low. The 95% marker is a widget visual choice, not a native alarm
 default. See [FrSky telemetry documentation](https://ethos-doc.frsky-rc.com/model-setup/telemetry/).
 
-Existing complete, checked settings records are accepted and their limits
-migrate to Custom. Source-storage order and counter format are unchanged.
+Old scalar settings records are not imported. Configure profiles/Custom limits again.
+Current source-storage order and counter format are unchanged.
 Editing a custom limit selects Custom. Native alarms are untouched.
 
 Airborne gate --- is optional: CATEGORY_NONE is normalized to no source.
