@@ -18,3 +18,4 @@ Screenshots are native ETHOS simulator renders containing that example
 picture and synthetic values. They are documentation, not flight-test data.
 FrSky/ETHOS names and any visible vendor UI remain their owners' marks.
 
+

@@ -1,12 +1,10 @@
-# Ethos Widgets
-
-## VoltDeck
+# VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS.
 
 **VoltDeck 2026.10-v2: latest release. Physical X20RS/model testing
 passed, confirmed by the owner on 2026-10-05.**
 
-[Download VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) | [Release notes](https://github.com/bliatun-code/Ethos-Widgets/releases/tag/voltdeck-2026.10-v2)
+[Download VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) | [Release notes](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v2)
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
 
@@ -49,7 +47,7 @@ The Ultimate AMR picture is documentation artwork, not a required widget asset.
 
 ## Install VoltDeck
 
-1. Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the release assets, not GitHub's automatically generated source archive.
+1. Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the release assets, not GitHub's automatically generated source archive.
 2. Extract its `scripts/VoltDeck` folder onto the radio SD card so the final path is `scripts/VoltDeck/main.lua`.
 3. Restart ETHOS, create a full-screen widget area and select **VoltDeck**.
 4. Configure the sensors and battery capacity for that particular model.
@@ -135,3 +133,8 @@ for the separate status of owner-supplied demonstration artwork.
 Public files are explicitly selected: Lua source, documentation and curated
 example images. Internal notes, test tools, packet feeders, native model files,
 live telemetry logs and generated per-model state stay private.
+
+
+## Gasoline models
+
+[GasDeck](https://github.com/bliatun-code/GasDeck) has its own receiver-power, gasoline-engine and fuel dashboard, illustrated guides and independent release cycle.
