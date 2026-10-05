@@ -17,7 +17,7 @@ remain synthetic simulator examples, not evidence from that radio test.
 
 ## 1. Start with the model and battery
 
-Download the named [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) package,
+Download the named [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) package,
 extract its `scripts/VoltDeck` folder onto the SD card, then select **VoltDeck** in a full-screen
 widget area and open its configuration. The visible model name comes from
 the active ETHOS model, not hard-coded text.

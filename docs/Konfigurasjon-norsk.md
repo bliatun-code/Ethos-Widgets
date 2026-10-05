@@ -12,7 +12,7 @@ en virkelig flyging. Testbekreftelsen gjelder eierens oppsett, ikke alle radioer
 
 ## Installasjon og grunnoppsett
 
-1. Last ned [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) fra release-siden.
+1. Last ned [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) fra release-siden.
 2. Pakk ut `scripts/VoltDeck` til SD-kortet, slik at filen ligger som `scripts/VoltDeck/main.lua`.
 3. Start ETHOS på nytt og velg **VoltDeck** i et fullskjerms widgetfelt.
 4. Velg telemetrikildene for akkurat denne modellen.

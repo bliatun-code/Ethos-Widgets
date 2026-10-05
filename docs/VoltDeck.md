@@ -25,8 +25,8 @@ See the [illustrated configuration guide](Configuration.md) or the
 
 ## Installation
 
-Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/Ethos-Widgets/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the
-[release assets](https://github.com/bliatun-code/Ethos-Widgets/releases/tag/voltdeck-2026.10-v2). Use the named widget package,
+Download [VoltDeck-2026.10-v2.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v2/VoltDeck-2026.10-v2.zip) from the
+[release assets](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v2). Use the named widget package,
 not the automatically generated repository source archive. Extract its
 `scripts/VoltDeck` folder onto the SD card, preserving this structure:
 
