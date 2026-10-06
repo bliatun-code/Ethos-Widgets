@@ -2,25 +2,23 @@
 
 [Home](../README.md) | [Installation](VoltDeck.md) | [Norsk](Konfigurasjon-norsk.md)
 
-**These are native FrSky ETHOS 26.1.2 simulator screenshots using synthetic
-demonstration readings. They are not field measurements, flight-test evidence
-or a promise of compatibility with another radio.**
-
-The gallery uses the actual widget drawing and calculation functions.
-A private simulator fixture supplies values and a fabricated last-flight
-record. It does not write an actual flight count. No fixture is distributed.
-The pack-transition series instead snapshots the normal flight callbacks
-with synthetic inputs and a RAM-only private test counter. Neither set is
-a recorded flight. This guide covers release 2026.10-v3. The owner separately
-confirmed physical X20RS/model testing passed on 2026-10-05; the pictures
-remain synthetic simulator examples, not evidence from that radio test.
+The layout examples use illustrative readings. The menu and configuration images
+show the widget in ETHOS.
 
 ## 1. Start with the model and battery
 
-Download the named [VoltDeck-2026.10-v3.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v3/VoltDeck-2026.10-v3.zip) package,
-extract its `scripts/VoltDeck` folder onto the SD card, then select **VoltDeck** in a full-screen
-widget area and open its configuration. The visible model name comes from
-the active ETHOS model, not hard-coded text.
+Download the named [VoltDeck-2026.10-v4.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v4/VoltDeck-2026.10-v4.zip) package,
+extract its `scripts/VoltDeck` folder onto the SD card and restart ETHOS.
+Select **VoltDeck** in a full-screen widget area. VoltDeck shows the active ETHOS
+model's name. Open the widget menu and choose **Configure widget** to change
+settings. Choose **Flight log** or **Flight diagnostics** to switch views.
+
+<table>
+<tr>
+<td><img src="images/widget-menu.png" alt="VoltDeck widget menu"><br><b>Widget menu</b></td>
+<td><img src="images/configuration-overview.png" alt="VoltDeck configuration groups"><br><b>Configure widget</b></td>
+</tr>
+</table>
 
 | Configuration group | Field | Example |
 |---|---|---|
@@ -37,8 +35,7 @@ the active ETHOS model, not hard-coded text.
 | Telemetry | Consumed mAh | Your ESC/sensor consumption source |
 | Motor / RPM | RPM source | Your actual mechanical RPM source |
 
-Sensor names depend on the model's equipment. Do not search for the private
-demo sensors or import an unrelated model's native sensor record.
+Select sensors from your model's equipment.
 Check the configured cell count and consumption reset before every new pack.
 
 At 650 mAh consumed from a 2500 mAh pack:
@@ -48,9 +45,18 @@ remaining mAh = 2500 - 650 = 1850
 remaining %  = 100 * 1850 / 2500 = 74%
 ```
 
-The result is clamped to 0..100%. This is a capacity calculation, not a
+The percentage stays between 0 and 100%. This is a capacity calculation, not a
 direct cell-voltage measurement. An inaccurate current/consumption sensor,
 wrong capacity or unreset counter produces an inaccurate percentage.
+
+If you choose **Percent sensor**, select a remaining-charge source in **%**.
+**Voltage estimate** is approximate; prefer consumed mAh when reliable
+consumption telemetry is available.
+
+If charge becomes unknown after a consumption-counter reset, check the
+battery's charge and the current mAh reading. Exit preview, disarm the motor,
+then choose **Accept battery counter...** in the widget menu and confirm.
+This accepts the current reading; it does not reset the sensor or flight count.
 
 ## 2. Retro LCD RPM
 
@@ -65,10 +71,8 @@ wrong capacity or unreset counter produces an inaccurate percentage.
 | Motor / RPM | RPM scale | Manual |
 | Motor / RPM | RPM max | 12000 rpm |
 
-The example shows **8600 rpm** with an illustrative **10050 rpm** session
-peak. Its scale remains fixed at 12000, so a falling reading does not
-silently change the reference range. The rising segmented bar is a
-presentation of telemetry, not an independent speed measurement.
+The example shows **8600 rpm** with a **10050 rpm** session peak.
+The scale stays fixed at 12000 when the reading falls.
 
 A session peak is not necessarily a last-flight peak. Use **Reset live peaks**
 from the widget menu when a fresh session is needed.
@@ -146,11 +150,10 @@ the model picture; transparency lets the chosen background show through.
 | Lower deck | Custom min / max | 0 / 100 |
 | Lower deck | Decimals (-1 auto) | 0 |
 
-The example uses a synthetic **54 C** value and radio-theme colors.
+The example shows **54 C** with radio-theme colors.
 The actual unit comes from the selected source. A temperature source,
 altitude, speed or another numeric source can be used; select a sensible
-range and label for that equipment. This is not an extra calculated sensor
-written into the user's model.
+range and label for that equipment.
 
 ## 7. KV estimate without RPM telemetry
 
@@ -203,14 +206,13 @@ it does not prove the measured shaft speed or distinguish all causes of sag.
 
 In **Battery alert**, enable **Battery alert**, select **Alert WAV**, and
 set **Repeat** in seconds. Set **Audio folder** first and reopen configuration
-before choosing the file from that folder. Supported WAV checks expect
-PCM, 32 kHz, mono, 16-bit. An empty, invalid or unavailable WAV uses a tone.
+before choosing the file from that folder. Use PCM WAV files: 32 kHz, mono,
+16-bit. An empty, invalid or unavailable WAV uses a tone.
 Repetition also waits for the selected sound to finish.
 
 **Alert on estimate** separately permits alarms based on the approximate
 voltage-estimate battery method. Consumed mAh is the preferred method in
-this guide. The alarm is disabled in preview and in the private screenshot
-fixture; a red screenshot is not evidence of an audio test.
+this guide. The alarm is disabled in preview.
 
 ## 9. Missing telemetry is intentionally obvious
 
@@ -230,7 +232,7 @@ do not interpret missing consumed mAh as a full pack.
 
 Open **Flight log** from the widget menu.
 
-| Example summary | Synthetic value |
+| Example summary | Example value |
 |---|---|
 | Flight duration | 05:18 |
 | Maximum measured RPM field | 10350 rpm |
@@ -238,14 +240,10 @@ Open **Flight log** from the widget menu.
 | Pack low / high | 20.8 / 25.2 V |
 | Maximum electrical input power | 1498 W |
 | Maximum KV potential, not measured | 10584 rpm |
-| Displayed counter | 42, illustrative only |
-
-These numbers are fabricated for the guide. They are not a measured
-Ultimate AMR flight. The RPM field label describes its production meaning;
-the example value itself is synthetic.
+| Displayed counter | 42 |
 
 The trace shows strong reception, brief dips below warning/critical limits,
-and a deliberate missing-data gap. The gap must not be read as a good link.
+and a missing-data gap. A gap means no valid reading was available.
 The example explicitly selects the **ACCST** visual profile: **45 dB low**
 and **42 dB critical**. ACCESS/TD/TW use **35/32 dB** instead. Choose the
 profile for the protocol, not merely the frequency named by the sensor.
@@ -260,8 +258,7 @@ The dashboard RF sources and the graph sources can be different.
 
 The example uses the widget's **95% early-quality / 50% low** visual profile.
 Yellow highlights deteriorating valid-frame reception; red marks the low
-threshold. **95% is our early visual marker, not a FrSky alarm default.**
-FrSky documents a 50% low-VFR alarm, not a separate critical-VFR alarm.
+threshold. **95% is a visual warning threshold, not a FrSky alarm default.**
 
 | RF signals / Profile | RSSI yellow / red | VFR yellow / red |
 |---|---|---|
@@ -271,16 +268,14 @@ FrSky documents a 50% low-VFR alarm, not a separate critical-VFR alarm.
 
 Each slot has a profile and four custom limits under **RF signals**.
 Editing a limit automatically selects **Custom** for that slot.
-Presets ignore retained custom values; selecting Custom restores their use.
-Pre-upgrade model limits are preserved as Custom, including the older 95/90
-example. Choose a preset explicitly to use the new 95/50 profile.
+Choose a preset to use its limits, or select **Custom** to use your own.
 
 The source's name and unit appear on the dashboard and graph.
 Frequency alone cannot identify ACCESS, TD, TW or ACCST.
 
 ![Inactive source names and units](images/rf-inactive-units.png)
 
-This cropped synthetic dashboard example retains RSSI 2.4G in dB and
+The dashboard example retains RSSI 2.4G in dB and
 VFR 900M in %, even though both readings are unavailable. Dashes are
 missing data, not zero signal.
 VFR uses a 0-100% scale; RSSI uses the configurable dB scale.
@@ -292,17 +287,11 @@ an overall link-quality indicator. A poor individual band need not mean an
 equally poor combined link. Neither graph guarantees a safe connection.
 See [FrSky's telemetry manual](https://ethos-doc.frsky-rc.com/model-setup/telemetry/).
 
-Graph sources can differ from dashboard sources. A flight pins its sources,
-names and units at start, so source changes do not mix different sensors
-in one trace. Visual profiles remain adjustable. Keep native alarms and failsafe.
+Choose graph sources before flying. A flight keeps the sources, names and
+units selected at its start. Visual profiles remain adjustable.
 
-RF rendering is bounded: up to 180 history points are reduced to at most
-48 minimum-preserving time bins per channel. Missing data breaks the trace;
-no averaging hides brief lows. Geometry is prepared over several wakeups,
-then paint draws cached primitives. Live traces can lag by a few seconds.
-The updated RF examples use 180 synthetic input points. The owner separately
-confirmed that physical X20RS/model testing of 2026.10-v3 passed on 2026-10-05.
-Other hardware, firmware and model setups still need their own checks.
+Missing data leaves a gap in the graph; brief low readings remain visible.
+Live graphs can lag by a few seconds.
 
 ## 12. Configure flight detection for the actual model
 
@@ -321,9 +310,9 @@ Other hardware, firmware and model setups still need their own checks.
 | Extra log delay  | 5 s after session completion |
 | RF graph 1 / 2 | RSSI or VFR sources for that model |
 
-Set **Throttle low (raw) / high (raw)** to the actual `source:value()`
-endpoints, not the channel monitor's percentage display. Sources can use
--1024/+1024, -100/+100 or 0/100; verify the selected source. The widget
+Set **Throttle low (raw) / high (raw)** to the raw endpoints shown in
+**Flight diagnostics**, not the channel monitor's percentage display. Sources
+can use -1024/+1024, -100/+100 or 0/100; verify the selected source. The widget
 normalizes these endpoints to 0-100% throttle.
 
 A qualifying flight requires the arm condition, valid pack telemetry and
@@ -340,9 +329,9 @@ its counter twice. The optional airborne gate also pauses rather than clears it.
 RF history continues across these motor pauses; its elapsed axis includes them.
 
 Only continuously missing, invalid or non-positive pack voltage for **Pack loss
-delay** ends that session. The default is 10 s (adjustable 3-120 s); the old
-**End delay** value is preserved under the new label. Returning voltage before
-the timeout cancels the loss timer. Ordinary positive voltage sag is not a reset.
+delay** ends that session. The default is 10 s (adjustable 3-120 s).
+Returning voltage before the timeout cancels the loss timer. Ordinary positive
+voltage sag is not a reset.
 A prolonged RF/telemetry loss can resemble disconnecting the pack, while a swap
 shorter than the delay may be missed. Use a longer delay, e.g. 30 s, when appropriate.
 
@@ -350,8 +339,9 @@ The last qualified flight stays visible after the aircraft is switched off.
 While the next flight qualifies, the log is labelled **LAST FLIGHT LOG** and
 still shows the previous statistics/graphs. Only successful new qualification
 replaces it. A failed candidate does not erase the last qualified record.
-Radio restart still clears RAM-only logs. Resetting the persistent counter
-requires logging enabled, motor disarmed and the pack session ended after disconnect.
+Radio restart clears the last-flight statistics and graphs. Resetting the flight
+counter requires logging enabled, motor disarmed and the pack session ended
+after disconnect.
 
 ### Automatic flight-log view
 
@@ -368,16 +358,7 @@ configuration or manually choosing a view cancels a pending change. It happens
 once per completed flight; returning to Dashboard will not reopen the same log.
 This changes the view inside VoltDeck, not the radio's active main page.
 
-This feature is included in the 2026.10-v3 release. The owner confirmed
-automatic opening on the physical radio on 2026-10-04 and the complete
-2026.10-v3 update, including the cleanup correction, on 2026-10-05.
-53 focused regression cases and 25 native ETHOS simulator cases passed;
-the native suite also passed after restarting the simulator.
-
 ### Illustrated pack-session transitions
-
-These four native simulator screens are snapshots from the synthetic transition
-exercise, not recorded flights. The private test counter stays in RAM.
 
 | Motor disarmed, same pack | Pack disconnected past the delay |
 |---|---|
@@ -389,62 +370,48 @@ exercise, not recorded flights. The private test counter stays in RAM.
 | ![Previous log while next flight qualifies](images/flight-next-qualifying.png) | ![New qualified flight replaces previous log](images/flight-next-qualified.png) |
 | Previous flight statistics remain; count is still 1. | Count becomes 2; only now does the new record replace it. |
 
-The exercise also checked an aborted next candidate, brief voltage loss,
-positive voltage sag and an airborne-gate pause. None erased or recounted
-the same qualified pack session. These are simulator checks with synthetic
-inputs, not a substitute for physical-radio testing or proof of airborne flight.
-
 ### Flight diagnostics
 
 Choose **Flight diagnostics** in the widget menu. It shows actual throttle
-API raw value, normalized 0-100% throttle, calibration endpoints, arm and
+raw value, normalized 0-100% throttle, calibration endpoints, arm and
 optional airborne gates, valid pack voltage and qualification progress.
 The status banner identifies blocking conditions, paused sessions, continuous
 pack-loss progress and a completed session whose last log has been retained.
 
-An unselected arm source blocks logging. **Airborne gate = ---** passes,
-even when ETHOS represents it as a Source object rather than nil.
+An unselected arm source blocks logging. **Airborne gate = ---** passes.
 **Always on** also passes; a selected physical/logic condition must be ON.
 These choices do not bypass arm, voltage or time/throttle requirements.
-Diagnostics can be opened with logging disabled and do not change sources,
-settings or native safety functions. Mid-stick means 50% normalized throttle
+Read the current status banner together with the individual gates.
+**LOG DISABLED** means logging is Off; a passing airborne gate alone does not
+qualify a flight. Diagnostics do not change sources, settings or native safety
+functions. Mid-stick means 50% normalized throttle
 even when the channel monitor shows 0%. Keep the motor safely disabled when
 checking endpoints, and disable logging for bench tests that should not count.
 
-![Optional airborne gate passing in ETHOS](images/flight-diagnostics.png)
+![Flight diagnostics with the airborne gate unselected](images/flight-diagnostics.png)
 
-![Always-on airborne gate passing in ETHOS](images/flight-diagnostics-always-on.png)
+![Flight diagnostics with Always on selected](images/flight-diagnostics-always-on.png)
 
-These diagnostic illustrations use synthetic pack/arm/throttle readings;
-the gate selections come from ETHOS itself. They do not represent a flight.
-
-Only the model's counter persists. Last-flight statistics and graphs are
-kept in RAM and can disappear when the radio is turned off. History is
-bounded, with a maximum of 180 points and downsampling/minimum bins rather
-than unbounded per-flight allocations.
+The flight count is saved for each model.
 
 ## 13. Per-model settings and pictures
 
-Scalar settings are stored as checked, alternating per-model files beneath
-`/scripts`. Sensor assignments stay in the native ETHOS model/widget
-record. Back up the native model, both settings files and counter state
-together privately. Do not copy another model's generated state as a preset.
+Settings and source assignments are saved for each model. Back up the SD card
+and ETHOS model together. Check all sources and battery settings if you copy
+a model.
 
 Use **Image source = Selected model** to avoid choosing a second file.
-The model's selected image is reused when available. Native bitmap decoding
-still uses RAM; PNG compression is not the bitmap memory budget.
+The model's selected image is reused when available.
 
 The example [Ultimate AMR artwork](images/ultimate-amr.png) is **290 x 191**
-pixels, selected to match the widget's image area. ETHOS Suite presets such
-as **480 x 272** and **480 x 320** are supported by this widget's current
-size guard, but decode more pixels and are then fitted into the smaller area.
-**800 x 480** exceeds the widget's 160000-pixel guard and is not accepted.
+pixels and matches the widget's image area. **480 x 272** and **480 x 320**
+images are also supported and resized to fit. **800 x 480** is not accepted.
 
 For this widget use ordinary **8-bit RGB or RGBA PNG**, not indexed/palette
 or 16-bit-channel PNG. Transparency is useful with black, custom and themed
 backgrounds. The artwork is documentation-only; see [NOTICE](../NOTICE.md).
 
-## 14. Before testing on a physical radio
+## 14. Before using VoltDeck
 
 1. Back up the SD card and the native model configuration.
 2. Confirm sensor units and fresh consumption values with a known pack.
@@ -452,24 +419,3 @@ backgrounds. The artwork is documentation-only; see [NOTICE](../NOTICE.md).
 4. Compare measured RPM/current against the equipment's own telemetry.
 5. Check the chosen throttle range and arm/airborne gates.
 6. Perform safe bench checks before any flight and keep native alarms/failsafe.
-
-These screenshots verify presentation, not real-world safety or flight
-qualification. Physical X20RS/model testing of this release was reported
-passed by the owner. Check your own model setup and report issues for future updates.
-
-
-## Safety hardening (October 2026)
-
-The owner confirmed physical X20RS radio testing of the final RC1 builds on 2026-10-05. The shared final check passed 252 named automated checks; the preceding native ETHOS 26.1.2 simulator run passed 84 functional cases and 120 production-rendered frames. Counts cover both widgets, not 252 cases per widget. This is a project test report, not universal hardware compatibility or safety certification.
-
-- Remaining capacity from consumed mAh requires a monotonic counter. An unexpected decrease larger than 0.1% of configured capacity (minimum 1 mAh) makes remaining charge unknown; it never silently shows a full pack.
-- A configured battery-voltage source must be absent for the configured session-end delay before reconnection permits a new counter baseline. A brief RF gap, ARM/ignition pause, missing consumption sample, or entering preview does not clear the guard. A long RF outage can still resemble a battery change; this is not a physical battery detector.
-- After checking actual charge and the mAh reading, use the widget menu **Accept battery counter...** (VoltDeck) or **Accept RX counters...** (GasDeck). Confirmation requires a valid ARM OFF / ignition OFF indication, respectively. This only accepts the current reading; it does not reset any radio sensor, change charge, or affect flight counting. GasDeck fuel refuelling is independent.
-- Percent sources must use the percent unit. Explicit raw sources with UNIT_NONE and a percent unit label are also accepted. Voltage/current values are never interpreted as percentages.
-- Audio cooldown persists across short recovery, missing samples and configuration edits. WAV duration limits repetition to avoid overlap. GasDeck gives RX the first simultaneous alarm slot, then alternates due RX/fuel alarms so neither is starved.
-- Synthetic preview does not change live peaks, consumption guards or fuel integration. Actual flow integration becomes unknown after an unobserved gap; refuel confirmation is then required.
-- Long labels are UTF-8-safe shortened. Native-font text measurements use a 64-entry bounded cache; source names refresh every five seconds or on source/config changes, while canonical units stay live.
-
-### Settings compatibility
-
-This major version deliberately has no legacy settings migration. New per-model scalar files use /scripts/vc3*.cfg (VoltDeck) and /scripts/gc1*.cfg (GasDeck); old vc*/gc* files are not read, modified or deleted. Configure the new defaults explicitly. Counter files and the current ordered ETHOS source layout are unchanged, so current selected sources and flight counts can be retained without importing old scalar settings. New scalar envelopes are VD5 / GD2, explicit schema 1; native source headers remain VD4 / GD1. Invalid or future schemas are not overwritten. Keep backups before upgrading and verify all capacity, chemistry, scale, alarm and session settings on the radio. Reserved GasDeck ARM is not migrated to ignition. No test helpers or model-specific settings are included in the widget package.

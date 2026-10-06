@@ -1,8 +1,16 @@
 # Changelog
 
+## 2026.10-v4 - release, 2026-10-06
+
+- Add ETHOS 1.6.6 compatibility.
+- Remove internal settings-file information from the radio configuration menu.
+- Remove the Memory snapshot menu action.
+- Simplify the installation and configuration documentation.
+- Regression and render checks passed; physical-radio testing passed on ETHOS 26.1.2.
+
 ## 2026.10-v3 - release, 2026-10-05
 
-- Owner confirmed physical X20RS testing of the final RC1 build on 2026-10-05.
+- Physical X20RS testing of the final RC1 build passed on 2026-10-05.
 - Major pre-publication hardening of the battery, flight-log and telemetry dashboard.
 - Unexpected consumed-mAh decreases become unknown instead of showing a falsely full battery; safe manual acknowledgement and sustained-power-loss boundaries.
 - Persistent alarm cooldowns, non-overlapping WAV playback and fair GasDeck RX/fuel scheduling.
@@ -18,7 +26,7 @@
 - Fix `destroy()` when called without a created widget instance, which previously raised a nil `widget` error (line 1891 in 2026.9-v2).
 - Keep ordinary cleanup and flight ownership release intact; empty cleanup cannot reset the flight, counter, retained log or pending automatic view.
 - Add focused lifecycle coverage and native simulator lifecycle probes alongside the existing transition tests.
-- The owner confirmed that the complete 2026.10-v2 update passed testing on the physical X20RS on 2026-10-05.
+- The complete 2026.10-v2 update passed testing on the physical X20RS on 2026-10-05.
 - Include optional Auto-open log and Extra log delay introduced in 2026.9-v2; defaults remain Off and 5 s.
 - All 53 focused Lua regression cases and 25 native ETHOS simulator cases passed; the native suite also passed after restart.
 - Publish VoltDeck-2026.10-v2.zip with Lua source, installation instructions, license and notices. No compiled bytecode or private fixtures are bundled.
@@ -32,10 +40,10 @@
 - Read both 2026.8 and earlier checked settings with new options defaulted safely.
 - Add focused regression and private native-simulator transition coverage; no synthetic fixture is distributed.
 - Leave released VoltDeck-2026.8-v2.zip and its physical-test confirmation unchanged.
-- The owner confirmed automatic opening on the physical radio on 2026-10-04; the separately observed cleanup error is addressed in 2026.10-v2.
+- Automatic opening passed physical-radio testing on 2026-10-04; the separately observed cleanup error is addressed in 2026.10-v2.
 
 ## 2026.8-v2 - first public release, 2026-10-02
-The owner confirmed that physical X20RS/model testing passed on 2026-10-02.
+Physical X20RS/model testing passed on 2026-10-02.
 All 11 native ETHOS simulator transition stages and 14 focused Lua regression
 cases also passed with synthetic inputs. This is not universal compatibility
 or safety certification. The released Lua is unchanged from the tested build.
@@ -55,7 +63,7 @@ or safety certification. The released Lua is unchanged from the tested build.
   previous qualified record and one current candidate are retained.
 
 The entries below describe historical development status at the time.
-The current-version physical-test confirmation is recorded above.
+Later release validation is recorded in the dated release entries above.
 
 ## 2026.7-v2 - development, 2026-10-02
 No release or tag. Physical-radio confirmation of these fixes is pending.

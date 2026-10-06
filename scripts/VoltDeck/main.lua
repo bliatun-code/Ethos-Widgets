@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.10-v3"
+local VERSION = "2026.10-v4"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -13,7 +13,8 @@ local GRAPH_BINS = 48
 local GRAPH_SOURCE_STEPS = 32
 local GRAPH_BIN_STEPS = 24
 local BITMAP_CACHE = setmetatable({}, {__mode = "v"})
-local VALUE_FONTS = {FONT_XXL, FONT_XL, FONT_L_BOLD, FONT_L, FONT_M_BOLD, FONT_M, FONT_S, FONT_XS}
+-- Ethos 1.6 uses STD names for the medium fonts.
+local VALUE_FONTS = {FONT_XXL, FONT_XL, FONT_L_BOLD, FONT_L, FONT_M_BOLD or FONT_STD_BOLD, FONT_M or FONT_STD, FONT_S, FONT_XS}
 local SMALL_FONTS = {FONT_S, FONT_XS}
 local SURFACE_HEIGHT = 480
 local LOW_BATTERY_PERCENT = 30
@@ -739,14 +740,6 @@ local function memory()
     local ok, result = pcall(system.getMemoryUsage)
     if ok and type(result) == "table" then return result end
     return {}
-end
-
-local function memorySnapshot(widget)
-    if not validWidget(widget) then return end
-    local m = memory()
-    print(string.format("VoltDeck %s LuaFree=%s BitmapFree=%s Image=%s Pixels=%s",
-        VERSION, tostring(m.luaRamAvailable), tostring(m.luaBitmapsRamAvailable),
-        widget.loadedImagePath or "-", tostring(widget.imagePixels or 0)))
 end
 
 local function updateResources(widget)
@@ -1904,7 +1897,6 @@ local function configure(widget)
     end
 
     if widget.configError then note(widget.configError) end
-    note("Settings: per-model checked files in /scripts/vc*.cfg")
 
     group("Battery")
     choiceField(widget, "Remaining from", "batteryMethod",
@@ -2099,9 +2091,6 @@ local function menu(widget)
             widget.peakRPM, widget.peakWatts = nil, nil; changed(widget) end},
         {"Accept battery counter...", function()
             confirmBatteryCounter(widget) end},
-        {"Memory snapshot", function()
-            if not validWidget(widget) then return end
-            memorySnapshot(widget) end},
     }
 end
 
