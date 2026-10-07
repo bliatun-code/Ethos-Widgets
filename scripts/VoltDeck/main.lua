@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.10-v4"
+local VERSION = "2026.10-v5"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -203,20 +203,29 @@ local DeckCore = (function()
         return value.name, value.unit == UNIT_PERCENT and "%" or value.unit == UNIT_DB and "dB" or "?"
     end
     local function metadata(widget, slot, source, clock, name, label, rf)
-        widget.metadata = widget.metadata or {}
-        local cached = widget.metadata[slot]
+        if not validWidget(widget) then return name, rf and (not source and "dB" or "?") or label, 0 end
+        local cache = widget.metadata or {}
+        widget.metadata = cache
+        local previous = cache[slot]
+        local cached = previous
         if not cached or cached.source ~= source or clock < cached.clock or clock >= cached.clock + 5 then
             cached = details(source, name, label)
             cached.source, cached.clock = source, clock
-            widget.metadata[slot] = cached
         end
-        if source ~= nil and source ~= false and source ~= "" then
+        local canonicalUnit = cached.unit
+        if validWidget(widget) and source ~= nil and source ~= false and source ~= "" then
             local ok, unit = pcall(function() return source:unit() end)
-            cached.unit = ok and unit or nil -- canonical units must stay live
+            canonicalUnit = ok and unit or nil -- canonical units must stay live
+        end
+        -- Native source calls can reenter changed/destroy or refresh this slot.
+        -- Publish only into the same live cache; never revive invalidated state.
+        if validWidget(widget) and widget.metadata == cache and cache[slot] == previous then
+            cached.unit = canonicalUnit
+            cache[slot] = cached
         end
         local unit = cached.label
         if rf then unit = not source and "dB"
-            or cached.unit == UNIT_PERCENT and "%" or cached.unit == UNIT_DB and "dB" or "?" end
+            or canonicalUnit == UNIT_PERCENT and "%" or canonicalUnit == UNIT_DB and "dB" or "?" end
         return cached.name, unit, cached.decimals
     end
     -- Monotonic consumed-mAh high-water mark, separate from flight qualification.
@@ -365,6 +374,11 @@ local selectedSource, getSource, restoreSource = DeckCore.selectedSource, DeckCo
 local validWidget, sample = DeckCore.validWidget, DeckCore.sample
 local sourceDetails, rfDetails = DeckCore.sourceDetails, DeckCore.rfDetails
 
+
+-- changed() invalidates the active poll as well as scheduling the next one.
+local function validPoll(widget)
+    return validWidget(widget) and widget.nextPoll ~= 0
+end
 
 local function changed(widget, resetAlarm)
     if not validWidget(widget) then return end
@@ -991,6 +1005,7 @@ local function updateFlight(widget, data, clock, key)
         if gateSource then data.airborne, data.gateRaw = switchOn(gateSource)
         else data.airborne, data.gateRaw = true, nil end
     end
+    if not validPoll(widget) then return end
     if not widget.logEnabled or widget.preview or not key then
         if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then
             -- Disabling logging pauses the pack session; it must not rearm its count.
@@ -1000,23 +1015,28 @@ local function updateFlight(widget, data, clock, key)
         widget.flightSession = nil
         return
     end
-    if not FLIGHT_SESSION or FLIGHT_SESSION.key ~= key then FLIGHT_SESSION = newSession(key) end
+    if not FLIGHT_SESSION or FLIGHT_SESSION.key ~= key then
+        local session = newSession(key)
+        if not validPoll(widget) then return end
+        FLIGHT_SESSION = session
+    end
+    if not validPoll(widget) then return end
     local session = FLIGHT_SESSION
     widget.flightSession = session
     if session.owner and session.owner ~= widget then
         data.logCount, data.logState, data.logRevision = session.count, "Shared log", session.revision
         return
     end
-    session.owner = widget
     local dt = session.lastClock and clamp(clock - session.lastClock, 0, 1) or 0
-    session.lastClock = clock
     local armed, throttle, gate = data.armed, data.throttlePercent, data.airborne
     local ready = selectedSource(widget.armSource) ~= nil and throttle ~= nil and data.voltage ~= nil
+    if not validPoll(widget) then return end
     if ready and armed and gate and not session.current then
         local source1 = selectedSource(widget.graph1Source) or selectedSource(widget.rssi1Source)
         local source2 = selectedSource(widget.graph2Source) or selectedSource(widget.rssi2Source)
         local name1, unit1 = rfDetails(source1, "RF1")
         local name2, unit2 = rfDetails(source2, "RF2")
+        if not validPoll(widget) then return end
         session.current = {started = clock, duration = 0, highTime = 0, modelName = data.modelName,
             source1 = source1, source2 = source2, graphSourcesPinned = true,
             name1 = name1, name2 = name2, unit1 = unit1, unit2 = unit2, counted = false,
@@ -1025,6 +1045,7 @@ local function updateFlight(widget, data, clock, key)
         -- Keep the last qualified record until this candidate actually qualifies.
         dt = 0
     end
+    session.owner, session.lastClock = widget, clock
     local flight = session.current
     if flight then
         if data.voltage == nil then
@@ -1131,12 +1152,19 @@ local function alarm(widget, data, clock)
     if not state then return end
     local path = audioPath(widget.audioFolder, widget.alarmSound)
     if widget.checkedSound ~= path then
-        widget.checkedSound, widget.soundDuration = path, path ~= "" and audioInfo(path) or nil
+        local lookup = {}
+        widget.checkedSound, widget.soundDuration = lookup, nil
+        local duration = path ~= "" and audioInfo(path) or nil
+        -- Preserve resets during file I/O, including a second lookup of this path.
+        if not validWidget(widget) or widget.checkedSound ~= lookup then return end
+        widget.checkedSound, widget.soundDuration = path, duration
         if path ~= "" and not widget.soundDuration then print("VoltDeck: invalid WAV; using tone [" .. path .. "]") end
     end
     local played = false
     if widget.soundDuration then played = pcall(system.playFile, path) end
+    if not validWidget(widget) or widget.checkedSound ~= path then return end
     if not played then pcall(system.playTone, 1200, 250, 50) end
+    if not validWidget(widget) or widget.checkedSound ~= path then return end
     DeckCore.alarmPlayed(widget, state, clock, widget.alertInterval, played and widget.soundDuration or 0)
     widget.lastAlert = clock
 end
@@ -1261,13 +1289,17 @@ local function wakeup(widget)
     if clock < widget.nextPoll then return end
     widget.nextPoll = clock + 0.25
     updateResources(widget)
+    if not validPoll(widget) then return end
     -- Read the active model on every poll, including after switching models.
     local nameOK, modelName = pcall(model.name)
+    if not validPoll(widget) then return end
     local colors = palette(widget)
+    if not validPoll(widget) then return end
     local data = widget.scratch
     for key in pairs(data) do data[key] = nil end
     data.modelName = nameOK and modelName or "VoltDeck"
     local key = modelKey()
+    if not validPoll(widget) then return end
     if widget.peakModelKey ~= key then
         widget.peakModelKey, widget.peakRPM, widget.peakWatts = key, nil, nil
         widget.alertStates, widget.audioUntil, widget.metadata, widget.batteryStates = nil, nil, nil, nil
@@ -1281,11 +1313,14 @@ local function wakeup(widget)
         tx = sample(widget.txSource or widget.builtinTx, "voltage"),
         timer = sample(widget.timerSource, "timer"), percent = sample(widget.percentSource, "percent"),
     }
+    if not validPoll(widget) then return end
     for key, value in pairs(readings) do data[key] = value end
     data.themeBackground, data.themeForeground = colors.background, colors.foreground
     data.themeSecondary, data.themeAccent = colors.secondary, colors.accent
     data.rssi1Name, data.rssi1Unit = DeckCore.metadata(widget, "RF1", widget.rssi1Source, clock, "RF1", "", true)
+    if not validPoll(widget) then return end
     data.rssi2Name, data.rssi2Unit = DeckCore.metadata(widget, "RF2", widget.rssi2Source, clock, "RF2", "", true)
+    if not validPoll(widget) then return end
     if widget.preview then
         data.voltage, data.current, data.used = 22.8, 18.2, 650
         data.rssi1, data.rssi2, data.rx1, data.tx = 86, 83, 7.4, 8.0
@@ -1299,6 +1334,7 @@ local function wakeup(widget)
     if not widget.preview then
         trustedUsed, data.counterReset = DeckCore.batteryUsed(widget, "Pack", widget.consumptionSource,
             widget.voltageSource, data.voltage, data.used, widget.capacityMah, clock, key)
+        if not validPoll(widget) then return end
     end
     if trustedUsed ~= nil then data.remaining = math.max(0, widget.capacityMah - trustedUsed) end
     data.voltagePercent = voltagePercent(widget, data.voltage)
@@ -1312,6 +1348,7 @@ local function wakeup(widget)
     if data.percent ~= nil then data.percent = round(data.percent) end
     data.low = data.percent ~= nil and data.percent <= LOW_BATTERY_PERCENT
     data.rpm = sample(widget.rpmSource, "rpm")
+    if not validPoll(widget) then return end
     if data.rpm ~= nil and data.rpm < 0 then data.rpm = nil end
     data.watts = data.voltage and data.current and data.current >= 0 and data.voltage * data.current or nil
     data.cellVoltage = data.voltage and data.voltage / widget.cellCount or nil
@@ -1333,18 +1370,23 @@ local function wakeup(widget)
     end
     data.graph1 = sample(graphSource1, "signal")
     data.graph2 = sample(graphSource2, "signal")
+    if not validPoll(widget) then return end
     if widget.preview then
         data.rpm, data.rpmDisplay, data.watts, data.cellVoltage = 8300, 8300, 414.96, 3.8
         data.peakRPM, data.peakWatts = 8300, 414.96
     end
     updateFlight(widget, data, clock, key)
+    if not validPoll(widget) then return end
     updateAutoLog(widget, data, clock, key)
     updateFlightDiagnostics(widget, data, key)
+    if not validPoll(widget) then return end
     local graphDirty = prepareFlightGraphs(widget, clock)
     if widget.bottomSource then
         data.bottomValue = sample(widget.bottomSource)
+        if not validPoll(widget) then return end
         data.bottomName, data.bottomUnit, data.bottomDecimals =
             DeckCore.metadata(widget, "Bottom", widget.bottomSource, clock, "TELEMETRY", "")
+        if not validPoll(widget) then return end
     else
         data.bottomValue, data.bottomName, data.bottomUnit = nil, "SELECT A DECK SOURCE", ""
         data.bottomDecimals = 0
@@ -2060,6 +2102,7 @@ local function destroy(widget)
     widget.destroyed = true
     widget.autoLogSession, widget.autoLogSeen, widget.autoLogDue = nil, nil, nil
     widget.modelImage, widget.valueFont, widget.flightSession = nil, nil, nil
+    widget.checkedSound, widget.soundDuration = nil, nil
     widget.rfGraphs, widget.rfGraphWork = nil, nil
     widget.metadata, widget.batteryStates, widget.alertStates = nil, nil, nil
     if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then

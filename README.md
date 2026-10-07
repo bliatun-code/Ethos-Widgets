@@ -1,10 +1,11 @@
 # VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS 1.6.6 and 26.1.2.
 
-**VoltDeck 2026.10-v4: latest release. Physical X20RS/model testing
-passed on ETHOS 26.1.2.**
+**VoltDeck 2026.10-v5: latest release.**
 
-[Download VoltDeck-2026.10-v4.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v4/VoltDeck-2026.10-v4.zip) | [Release notes](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v4)
+Physical X20RS/model testing previously passed on ETHOS 26.1.2.
+
+[Download VoltDeck-2026.10-v5.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v5/VoltDeck-2026.10-v5.zip) | [Release notes](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v5)
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
 
@@ -43,7 +44,7 @@ The screenshots use illustrative values.
 
 ## Install VoltDeck
 
-1. Download [VoltDeck-2026.10-v4.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v4/VoltDeck-2026.10-v4.zip) from the release assets, not GitHub's automatically generated source archive.
+1. Download [VoltDeck-2026.10-v5.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v5/VoltDeck-2026.10-v5.zip) from the release assets, not GitHub's automatically generated source archive.
 2. Extract its `scripts/VoltDeck` folder onto the radio SD card so the final path is `scripts/VoltDeck/main.lua`.
 3. Remove any existing `scripts/VoltDeck/main.luac`, then restart ETHOS.
 4. Create a full-screen widget area and select **VoltDeck**.

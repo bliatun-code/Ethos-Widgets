@@ -7,7 +7,7 @@ show the widget in ETHOS.
 
 ## 1. Start with the model and battery
 
-Download the named [VoltDeck-2026.10-v4.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v4/VoltDeck-2026.10-v4.zip) package,
+Download the named [VoltDeck-2026.10-v5.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v5/VoltDeck-2026.10-v5.zip) package,
 extract its `scripts/VoltDeck` folder onto the SD card and restart ETHOS.
 Select **VoltDeck** in a full-screen widget area. VoltDeck shows the active ETHOS
 model's name. Open the widget menu and choose **Configure widget** to change

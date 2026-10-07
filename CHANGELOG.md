@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.10-v5 - release, 2026-10-07
+
+- Fix an intermittent source-name error while editing widget settings.
+- Avoid a false unknown-capacity reading after switching consumption sensors.
+- Cancel source and audio updates safely when the widget is closed or its settings change.
+
 ## 2026.10-v4 - release, 2026-10-06
 
 - Add ETHOS 1.6.6 compatibility.
