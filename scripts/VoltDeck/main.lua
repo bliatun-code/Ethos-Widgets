@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.10-v6"
+local VERSION = "2026.10-v7"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -18,10 +18,9 @@ local VALUE_FONTS = {FONT_XXL, FONT_XL, FONT_L_BOLD, FONT_L, FONT_M_BOLD or FONT
 local SMALL_FONTS = {FONT_S, FONT_XS}
 local SURFACE_HEIGHT = 480
 local LOW_BATTERY_PERCENT = 30
-local PACK_CHECK_MAX_CURRENT = 0.5
+local PACK_CHECK_MAX_CURRENT = 1.5
 local PACK_CHECK_SECONDS = 10
-local PACK_CHECK_RELAX_SECONDS = 60
-local PACK_CHECK_STABILITY_MV = 10
+local PACK_CHECK_STABILITY_MV = 200 -- Whole-pack span, not per-cell variation.
 local PACK_CHECK_AUTO_BP = 1000
 local PACK_CHECK_MANUAL_BP = 2000
 -- STC3115 default 4.20/4.35 V reference points, not a universal state of charge.
@@ -893,9 +892,10 @@ local function armIsOff(source)
     return raw == false or (finite(raw) and raw <= 0)
 end
 
-local function clearPackCheckWindow(state)
+local function clearPackCheckWindow(state, blocker)
     state.idleSince, state.minimum, state.maximum = nil, nil, nil
-    state.ready, state.sample = false, nil
+    state.ready, state.sample, state.window = false, nil, nil
+    state.blocker, state.rejectedSpan = blocker, nil
 end
 
 local function samePackSetup(widget, state, key)
@@ -913,7 +913,13 @@ local function samePackCheck(widget, state, generation)
 end
 
 local function packCheckCurrent(widget)
-    return math.min(PACK_CHECK_MAX_CURRENT, widget.capacityMah / 20000)
+    return math.min(PACK_CHECK_MAX_CURRENT, 3 * widget.capacityMah / 20000)
+end
+
+local function packCheckCurrentExceeded(widget, current)
+    -- Native telemetry can represent 0.6 A as 0.600000024 A. Allow only
+    -- one microampere of numeric rounding at the calculated boundary.
+    return current > packCheckCurrent(widget) + 0.000001
 end
 
 local function packReferenceBP(chemistry, cellMv)
@@ -930,17 +936,26 @@ local function packReferenceBP(chemistry, cellMv)
     return 10000
 end
 
-local function packDecision(widget, voltage, used)
+local function packDecision(widget, voltage, used, maximumVoltage)
     local chemistry = TYPES[widget.chemistry]
     local cellMv = round(voltage * 1000 / widget.cellCount)
+    local maximumCellMv = round((maximumVoltage or voltage) * 1000 / widget.cellCount)
     local counterBP = round(clamp((widget.capacityMah - used) / widget.capacityMah, 0, 1) * 10000)
-    local referenceBP = packReferenceBP(chemistry, cellMv)
+    local referenceLowBP = packReferenceBP(chemistry, cellMv)
+    local referenceHighBP = packReferenceBP(chemistry, maximumCellMv)
+    local referenceBP = referenceLowBP
+    -- Test both ends of the observed window; never select a favorable sample.
+    if referenceLowBP and math.abs(counterBP - referenceHighBP) > math.abs(counterBP - referenceLowBP) then
+        referenceBP = referenceHighBP
+    end
     local deltaBP = referenceBP and counterBP - referenceBP or nil
     local band = "manual"
-    if cellMv > round(chemistry.full * 1000) + 150 then band = "cells"
+    if maximumCellMv > round(chemistry.full * 1000) + 150 then band = "cells"
     elseif deltaBP and math.abs(deltaBP) > PACK_CHECK_MANUAL_BP then band = "blocked"
     elseif deltaBP and math.abs(deltaBP) <= PACK_CHECK_AUTO_BP then band = "auto" end
     return {cellMv = cellMv, counterBP = counterBP, referenceBP = referenceBP,
+        referenceLowBP = referenceLowBP, referenceHighBP = referenceHighBP,
+        minimumMv = round(voltage * 1000), maximumMv = round((maximumVoltage or voltage) * 1000),
         deltaBP = deltaBP, band = band}
 end
 
@@ -951,23 +966,57 @@ end
 local function samePackDecision(a, b)
     return a and b and a.band == b.band and packDifference(a) == packDifference(b)
         and round(a.counterBP / 10) == round(b.counterBP / 10)
-        and (a.referenceBP and round(a.referenceBP / 10))
-            == (b.referenceBP and round(b.referenceBP / 10))
+        and (a.referenceLowBP and round(a.referenceLowBP / 10))
+            == (b.referenceLowBP and round(b.referenceLowBP / 10))
+        and (a.referenceHighBP and round(a.referenceHighBP / 10))
+            == (b.referenceHighBP and round(b.referenceHighBP / 10))
+        and (a.deltaBP == nil or a.deltaBP >= 0) == (b.deltaBP == nil or b.deltaBP >= 0)
 end
 
 local function packUnitsValid(state)
     local ok, vu, cu = pcall(function()
         return state.voltageSource:unit(), state.currentSource:unit()
     end)
-    return ok and (vu == UNIT_VOLT or vu == UNIT_MILLIVOLT)
-        and (cu == UNIT_AMPERE or cu == UNIT_MILLIAMPERE)
+    if not ok then return false, "Cannot read pack voltage/current units." end
+    if vu ~= UNIT_VOLT and vu ~= UNIT_MILLIVOLT then return false, "Pack voltage must use V or mV." end
+    if cu ~= UNIT_AMPERE and cu ~= UNIT_MILLIAMPERE then return false, "Current must use A or mA." end
+    return true
 end
 
-local function packArmIdle(source)
-    local selected, category = selectedSource(source)
-    -- Always ON qualifies the flight log, but is not a physical ARM indication.
-    return not selected or (CATEGORY_ALWAYS_ON ~= nil and category == CATEGORY_ALWAYS_ON)
-        or armIsOff(selected)
+local function packCheckMessage(widget, state)
+    if not state then return "Waiting for the first battery readings." end
+    if state.blocker == "voltage" then return "Waiting for valid Pack voltage greater than 0 V." end
+    if state.blocker == "units" then return state.unitProblem end
+    if state.blocker == "model" then return "Waiting for a valid model identity." end
+    if state.blocker == "consumption" then return "Waiting for valid consumed mAh, at least 0." end
+    if state.blocker == "current" then return "Waiting for valid current, at least 0 A." end
+    if state.blocker == "load" then
+        return string.format("Current %.3f A exceeds %.3f A. A new 10 s check starts when current is within the limit.",
+            state.current, packCheckCurrent(widget))
+    end
+    local remaining = state.idleSince and math.max(0, math.ceil(PACK_CHECK_SECONDS - (os.clock() - state.idleSince)))
+        or PACK_CHECK_SECONDS
+    local progress = string.format("Checking battery: %d s remaining. Current limit %.3f A; pack voltage span at most 0.20 V.",
+        remaining, packCheckCurrent(widget))
+    if state.rejectedSpan then
+        return string.format("Pack voltage variation %.3f V exceeded 0.20 V. ", state.rejectedSpan / 1000) .. progress
+    end
+    return progress
+end
+
+local function packDecisionMessage(decision)
+    local reference = string.format("%.1f%%", decision.referenceLowBP / 100)
+    if decision.referenceLowBP ~= decision.referenceHighBP then
+        reference = string.format("%.1f-%.1f%%", decision.referenceLowBP / 100, decision.referenceHighBP / 100)
+    end
+    local detail = string.format("Counter %.1f%%; voltage reference %s. Worst difference %.1f pp. ",
+        decision.counterBP / 100, reference, packDifference(decision))
+    if decision.counterBP > decision.referenceLowBP then
+        return detail .. "Remaining charge may be overstated against the lowest voltage reference. Check actual charge, Cells / Battery type and consumed mAh."
+    elseif decision.counterBP < decision.referenceHighBP then
+        return detail .. "The counter shows less remaining charge. Check consumed mAh, capacity and consumption calibration."
+    end
+    return detail .. "Check actual charge and consumed mAh."
 end
 
 -- Qualify one battery episode, then use its monotonic counter during flight.
@@ -982,27 +1031,21 @@ local function checkBatteryCounter(widget, data, used, clock, key, newPack)
     local clockChanged = state and state.lastClock and (clock < state.lastClock
         or clock - state.lastClock >= widget.endDelay)
     if not sameSetup or newPack or state.pack ~= pack or state.recheck or expired or clockChanged then
-        local holdUntil = sameSetup and state.holdUntil or nil
-        if state and state.lastClock and clock < state.lastClock and holdUntil then
-            holdUntil = clock + PACK_CHECK_RELAX_SECONDS
-        end
         state = {pack = pack, key = key, source = widget.consumptionSource,
             voltageSource = widget.voltageSource, currentSource = widget.currentSource,
             armSource = widget.armSource, capacity = widget.capacityMah,
-            cells = widget.cellCount, chemistry = widget.chemistry, holdUntil = holdUntil,
+            cells = widget.cellCount, chemistry = widget.chemistry,
             method = widget.batteryMethod, endDelay = widget.endDelay}
         widget.packCheckState = state
     end
     if state.lastClock and clock - state.lastClock > 1 then clearPackCheckWindow(state) end
     state.lastClock = clock
     if widget.batteryMethod ~= 1 then clearPackCheckWindow(state); return used end
-    if data.current ~= nil and data.current > packCheckCurrent(widget) then
-        state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
-    end
+    state.current = data.current
     if data.voltage == nil then
         state.lossSince = state.lossSince or clock
         if clock - state.lossSince >= widget.endDelay then state.qualified = nil end
-        clearPackCheckWindow(state)
+        clearPackCheckWindow(state, "voltage")
         data.packCheckPending = true
         return nil
     end
@@ -1011,41 +1054,34 @@ local function checkBatteryCounter(widget, data, used, clock, key, newPack)
         state.qualified, state.requiresCounterAcceptance, state.problem = nil, true, nil
         clearPackCheckWindow(state)
     end
-    local unitsOK = packUnitsValid(state)
+    local unitsOK, unitProblem = packUnitsValid(state)
     if not samePackCheck(widget, state, generation) then
         if validWidget(widget) then widget.nextPoll = 0 end
         return nil
     end
     if not unitsOK or not key or data.used == nil then
-        clearPackCheckWindow(state); data.packCheckPending = true; return nil
+        clearPackCheckWindow(state, not unitsOK and "units" or not key and "model" or "consumption")
+        state.unitProblem = unitProblem
+        data.packCheckPending = true; return nil
     end
     if state.qualified then return used end
     data.packCheckPending = true
-    if data.current == nil or data.current < 0 or data.current > packCheckCurrent(widget) then
-        clearPackCheckWindow(state); return nil
-    end
-    local idleArm = packArmIdle(state.armSource)
-    if not samePackCheck(widget, state, generation) then
-        if validWidget(widget) then widget.nextPoll = 0 end
+    if data.current == nil or data.current < 0 or packCheckCurrentExceeded(widget, data.current) then
+        clearPackCheckWindow(state, data.current ~= nil and packCheckCurrentExceeded(widget, data.current) and "load" or "current")
         return nil
     end
-    if not idleArm then
-        state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
-        clearPackCheckWindow(state); return nil
-    end
-    if state.holdUntil and clock < state.holdUntil then clearPackCheckWindow(state); return nil end
-    local decision = packDecision(widget, data.voltage, data.used)
-    if not state.idleSince or state.candidate ~= decision.band
-        or math.max(state.maximum or decision.cellMv, decision.cellMv)
-            - math.min(state.minimum or decision.cellMv, decision.cellMv) > PACK_CHECK_STABILITY_MV then
-        state.idleSince, state.minimum, state.maximum, state.candidate = clock,
-            decision.cellMv, decision.cellMv, decision.band
-        state.ready, state.sample, state.problem = false, nil, nil
+    local packMv = round(data.voltage * 1000)
+    local span = math.max(state.maximum or packMv, packMv) - math.min(state.minimum or packMv, packMv)
+    if not state.idleSince or span > PACK_CHECK_STABILITY_MV then
+        clearPackCheckWindow(state)
+        state.idleSince, state.minimum, state.maximum, state.window = clock, packMv, packMv, {}
+        state.rejectedSpan = span > PACK_CHECK_STABILITY_MV and span or nil
+        state.problem = nil
     else
-        state.minimum, state.maximum = math.min(state.minimum, decision.cellMv),
-            math.max(state.maximum, decision.cellMv)
+        state.minimum, state.maximum = math.min(state.minimum, packMv), math.max(state.maximum, packMv)
     end
     if clock - state.idleSince >= PACK_CHECK_SECONDS then
+        local decision = packDecision(widget, state.minimum / 1000, data.used, state.maximum / 1000)
         state.ready, state.sample = true, decision
         if decision.band == "auto" and not state.requiresCounterAcceptance then
             state.qualified, state.problem, data.packCheckPending = true, nil, nil
@@ -1516,7 +1552,7 @@ local function wakeup(widget)
     if not validPoll(widget) then return end
     data.rssi2Name, data.rssi2Unit = DeckCore.metadata(widget, "RF2", widget.rssi2Source, clock, "RF2", "", true)
     if not validPoll(widget) then return end
-    local liveVoltage, liveCurrent = data.voltage, data.current
+    local liveVoltage = data.voltage
     if widget.preview then
         data.voltage, data.current, data.used = 22.8, 18.2, 650
         data.rssi1, data.rssi2, data.rx1, data.tx = 86, 83, 7.4, 8.0
@@ -1542,9 +1578,6 @@ local function wakeup(widget)
         clearPackCheckWindow(state)
         if state.lastClock and (clock < state.lastClock or clock - state.lastClock >= widget.endDelay) then
             state.qualified, state.recheck = nil, true
-            if clock < state.lastClock and state.holdUntil then
-                state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
-            end
         end
         state.lastClock = clock
         -- Demo values never qualify a pack; an observed live disconnect still
@@ -1557,9 +1590,6 @@ local function wakeup(widget)
             if pack then pack.newPack = true end
         end
         if liveVoltage ~= nil and liveVoltage > 0 then state.lossSince = nil end
-        if liveCurrent ~= nil and liveCurrent > packCheckCurrent(widget) then
-            state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
-        end
     end
     if trustedUsed ~= nil then data.remaining = math.max(0, widget.capacityMah - trustedUsed) end
     data.voltagePercent = voltagePercent(widget, data.voltage)
@@ -2204,7 +2234,8 @@ local function batterySetup(widget)
         currentSource = widget.currentSource, armSource = widget.armSource,
         capacity = widget.capacityMah, cells = widget.cellCount, chemistry = widget.chemistry,
         method = widget.batteryMethod, endDelay = widget.endDelay,
-        decision = widget.packCheckState and widget.packCheckState.sample}
+        decision = widget.packCheckState and widget.packCheckState.sample,
+        window = widget.packCheckState and widget.packCheckState.window}
 end
 local function sameBatterySetup(widget, setup)
     return validWidget(widget) and not widget.preview and widget.configGeneration == setup.generation
@@ -2253,8 +2284,8 @@ local function acceptBatteryCounter(widget, setup, expectedKey)
     local voltage = sample(setup.voltageSource, "voltage")
     local current = sample(setup.currentSource, "current")
     local used = sample(setup.source, "capacity")
-    local unitsOK = setup.check and packUnitsValid(setup.check)
-    local idleArm = packArmIdle(setup.armSource)
+    local unitsOK, unitProblem
+    if setup.check then unitsOK, unitProblem = packUnitsValid(setup.check) end
     local currentKey = modelKey()
     if not sameBatterySetup(widget, setup) or currentKey ~= key then
         return false, "Setup changed; reopen the menu.", true
@@ -2264,26 +2295,31 @@ local function acceptBatteryCounter(widget, setup, expectedKey)
         return false, "Wait for a consumed-mAh battery check and reopen the menu."
     end
     if not unitsOK or used == nil or used < 0 or voltage == nil or voltage <= 0 or current == nil or current < 0 then
-        clearPackCheckWindow(state)
-        return false, "Wait for valid pack voltage, current and consumed mAh."
+        clearPackCheckWindow(state, not unitsOK and "units" or (voltage == nil or voltage <= 0) and "voltage"
+            or (used == nil or used < 0) and "consumption" or "current")
+        state.unitProblem = unitProblem
+        return false, packCheckMessage(widget, state)
     end
-    if current > packCheckCurrent(widget) or not idleArm then
-        state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
-        clearPackCheckWindow(state)
-        return false, "Disarm and let the battery settle at low current; then reopen the menu."
+    if packCheckCurrentExceeded(widget, current) then
+        clearPackCheckWindow(state, "load")
+        state.current = current
+        return false, packCheckMessage(widget, state)
     end
-    local decision = packDecision(widget, voltage, used)
+    local liveMv = round(voltage * 1000)
+    local minimumMv, maximumMv = math.min(state.minimum or liveMv, liveMv), math.max(state.maximum or liveMv, liveMv)
+    local decision = packDecision(widget, minimumMv / 1000, used, maximumMv / 1000)
     if decision.band == "cells" then return false, "Check Cells and Battery type first." end
     if decision.band == "blocked" then
-        return false, string.format("Difference %.1f pp exceeds 20 pp. Check battery charge, Cells / Battery type and consumed mAh.", packDifference(decision))
+        return false, packDecisionMessage(decision) .. " Difference exceeds 20 pp; this check cannot be accepted."
     end
     if state.qualified then return false, "Battery already checked." end
-    if not state.ready or not state.lastClock or clock < state.lastClock or clock - state.lastClock > 1
-        or (state.holdUntil and clock < state.holdUntil)
-        or math.max(state.maximum or decision.cellMv, decision.cellMv)
-            - math.min(state.minimum or decision.cellMv, decision.cellMv) > PACK_CHECK_STABILITY_MV then
+    if not state.ready or state.window ~= setup.window or not state.lastClock
+        or clock < state.lastClock or clock - state.lastClock > 1
+        or maximumMv - minimumMv > PACK_CHECK_STABILITY_MV then
+        local span = maximumMv - minimumMv
         clearPackCheckWindow(state)
-        return false, "Wait for a stable low-current check and reopen the menu."
+        state.rejectedSpan = span > PACK_CHECK_STABILITY_MV and span or nil
+        return false, packCheckMessage(widget, state) .. " Reopen the menu after the check."
     end
     if not samePackDecision(setup.decision, decision) then
         clearPackCheckWindow(state)
@@ -2310,15 +2346,14 @@ local function confirmBatteryCounter(widget)
     elseif decision and decision.band == "cells" then
         title, message = "Check battery settings", "Pack voltage exceeds the selected Cells / Battery type. Correct the setup first."
     elseif decision and decision.band == "blocked" then
-        title, message = "Check pack/counter", string.format("Counter %.1f%%; voltage reference %.1f%%. Difference %.1f pp exceeds 20 pp. Check charge, Cells / Battery type and consumed mAh.",
-            decision.counterBP / 100, decision.referenceBP / 100, packDifference(decision))
+        title, message = "Check pack/counter", packDecisionMessage(decision) .. " Difference exceeds 20 pp; this check cannot be accepted."
     elseif not state or not state.ready or not decision then
-        title, message = "Checking battery", string.format("Wait for valid readings and 10 s of stable voltage at current at most %.3f A. Disarm first; after load, allow at least 60 s to settle.", packCheckCurrent(widget))
+        title, message = "Checking battery", packCheckMessage(widget, state)
     elseif not decision.referenceBP then
         message = string.format("LiFe voltage cannot reliably check charge. Counter %.1f%%. Confirm only after checking actual battery charge, capacity and consumed mAh. Acceptance does not restore missing consumption.", decision.counterBP / 100)
     else
-        message = string.format("Counter %.1f%%; voltage reference %.1f%%. Difference %.1f pp. Confirm only after checking actual battery charge, Cells / Battery type and consumed mAh. Acceptance does not restore missing consumption.",
-            decision.counterBP / 100, decision.referenceBP / 100, packDifference(decision))
+        message = packDecisionMessage(decision) .. " Acceptance does not restore missing consumption."
+        if state.requiresCounterAcceptance then message = "Consumption counter decreased. " .. message end
     end
     if title then
         form.openDialog({title = title, message = message,

@@ -21,8 +21,8 @@ See the [illustrated configuration guide](Configuration.md) or the
 
 ## Installation
 
-Download [VoltDeck-2026.10-v6.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v6/VoltDeck-2026.10-v6.zip) from the
-[release assets](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v6). Use the named widget package,
+Download [VoltDeck-2026.10-v7.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v7/VoltDeck-2026.10-v7.zip) from the
+[release assets](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v7). Use the named widget package,
 not the automatically generated repository source archive. Extract its
 `scripts/VoltDeck` folder onto the SD card, preserving this structure:
 
@@ -46,9 +46,14 @@ remaining percent = 100 * (capacity - consumed mAh) / capacity
 
 The displayed result is limited to 0 through 100 percent. With **Consumed mAh**,
 VoltDeck first checks the counter against a stable, low-current voltage reference.
+The check needs 10 seconds of valid readings within a 0.20 V range for the whole
+pack. Current is limited to `3 × capacity / 20000 A`, capped at 1.5 A;
+4000 mAh allows 0.60 A. ARM does not gate this check, and there is no separate
+waiting period after an interrupted window.
 Until the pack is checked, remaining charge shows **--**. Differences above
 10 and no more than 20 percentage points require explicit confirmation; larger
-differences stay blocked. See [the illustrated pack check](Configuration.md#check-before-showing-remaining-charge)
+differences stay blocked. The larger difference against the window's lowest
+and highest voltage decides the result. See [the illustrated pack check](Configuration.md#check-before-showing-remaining-charge)
 for its measurement conditions and the LiFe confirmation.
 Reset the consumption counter when connecting a new or recharged battery.
 An incorrect pack capacity or a counter left over from a previous pack
@@ -58,7 +63,9 @@ With **Consumed mAh**, acceptance lasts for the battery connection; voltage sag
 during flight does not repeat the comparison. A long pack-telemetry loss or a radio restart requires
 a new check. If consumption unexpectedly falls, remaining charge becomes unknown
 and explicit counter acceptance is required after checking the battery and reading.
-**Accept battery counter...** reviews the current check; it does not reset the sensor.
+**Accept battery counter...** shows progress, remaining blockers and whether
+the counter estimate is higher or lower than the voltage reference. It does
+not reset the sensor.
 
 Check that the pack is fully charged before every flight. Compare reported
 consumption with charger refill over several flights and follow any supported

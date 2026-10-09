@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.10-v7 - release, 2026-10-10
+
+- Allow up to 0.20 V variation across the whole pack during the 10-second battery check, accommodating stepped ESC telemetry.
+- Triple the low-current limit to `3 × capacity / 20000 A`, capped at 1.5 A; 4000 mAh allows 0.60 A. Avoid false rejection from native rounding at the limit.
+- Remove ARM and the separate 60-second wait from the consumed-mAh pack check; flight-logging conditions remain unchanged.
+- Compare consumption against both voltage-window endpoints and use the worst difference. Retain automatic acceptance through 10 percentage points, confirmation above 10 through 20, and blocking above 20; LiFe still needs manual confirmation.
+- Show check progress and specific blockers, and distinguish possible overestimation from a lower counter estimate. Confirm uses the checked voltage range with valid live readings and unchanged battery setup.
+- Refresh the illustrated battery-check dialogs and their English and Norwegian explanations.
+
 ## 2026.10-v6 - release, 2026-10-09
 
 - Add a Custom source alongside lower-deck presets, with position 1–3 and an Only Custom option; Custom replaces the cell row when all three rows are occupied.

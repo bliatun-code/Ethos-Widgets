@@ -71,19 +71,19 @@ are checked. The remaining-mAh display is also unknown during this check;
 **Consumed** can still show the sensor's reading. The check applies at every
 consumption level, not just when the counter is near zero.
 
-Keep the motor disarmed and let the pack settle. VoltDeck needs valid pack
+Let the pack settle. VoltDeck needs valid pack
 voltage, current and consumed mAh, followed by **10 seconds of stable low-current
-readings**. Current must be between zero and **capacity / 20000 A**, capped at
-**0.5 A**: for 2500 mAh, the limit is **0.125 A**. Voltage may vary by at most
-**0.01 V per cell** during that window. Higher current or ARM ON interrupts the
-window and requires at least **60 seconds** to settle before checking again.
-If a genuine **Arm switch** is selected, it must be valid and OFF. Leaving it
-blank or choosing **Always on** does not supply an ARM indication; keep the
-motor safely disabled yourself.
+readings**. Current must be between zero and **3 × capacity / 20000 A**, capped at
+**1.5 A**: the limit is **0.375 A for 2500 mAh** or **0.60 A for 4000 mAh**.
+The highest and lowest voltage may differ by at most **0.20 V for the whole
+pack**, not per cell. Higher current, missing readings or a wider voltage range
+starts the window again. There is no separate waiting period. **Arm switch**
+does not gate this pack check; it still controls flight logging.
 
 The check compares the counter's remaining percentage with a coarse voltage
-reference for the selected type. The difference is measured in **percentage
-points**, in either direction.
+reference for the selected type. It checks possible overestimation against the
+window's **lowest voltage** and underestimation against its **highest voltage**.
+The larger difference determines the result, measured in **percentage points**.
 The dialog rounds the difference up to the next 0.1 point; subtracting its two
 rounded percentages can therefore give a result 0.1 point lower.
 
@@ -92,6 +92,14 @@ rounded percentages can therefore give a result 0.1 point lower.
 | 10 percentage points or less | Automatically accepted; the calculated percentage and battery segments appear. |
 | More than 10, up to and including 20 points | **CHECK PACK/COUNTER** remains red and remaining charge stays unknown. Check the pack and sensor, then use **Accept battery counter...** to review both percentages and the difference before confirming. |
 | More than 20 points | Remaining charge stays unknown. Correct the charge, battery settings or consumption reading; the menu cannot bypass this limit. |
+
+**Accept battery counter...** shows what is holding up the check, including
+missing or unsuitable sources, measured current versus its limit, voltage
+variation or progress through the 10-second window. A higher counter estimate
+warns of possible overestimation; a lower one asks you to check consumption,
+capacity and sensor calibration. Confirmation uses the checked voltage range,
+so variation within that range does not require an identical frozen reading.
+Live telemetry and the battery setup must still be valid when you confirm.
 
 For **LiFe**, voltage cannot provide a dependable percentage comparison.
 After the same low-current check, inspect actual charge, capacity and consumed
@@ -116,8 +124,8 @@ and residual load affect the result. The **Voltage estimate** display retains
 its existing scale, including **3.57 V = 30%** for Lipo; it is not the reference
 used by this check.
 
-**CHECK CELLS/TYPE** means the voltage exceeds the selected battery type's full
-cell voltage by more than 0.15 V/cell under the same idle conditions. Correct
+**CHECK CELLS/TYPE** means the highest voltage in the check exceeds the selected
+battery type's full cell voltage by more than 0.15 V/cell. Correct
 **Cells**, **Battery type** or the voltage source; counter acceptance cannot
 dismiss this warning. Total voltage cannot determine the correct cell count.
 
@@ -361,7 +369,7 @@ from the flight log's uncorrected **KV potential**.
 | Field, in menu order | What it does |
 |---|---|
 | Enable log | Enables qualification and per-model flight counting. |
-| Arm switch | Actual motor-arm switch or logic condition. Required for logging; remains active when logging is Off. When selected, it must be valid and OFF during the pack check and counter acceptance. **---** and **Always on** do not provide an ARM indication for that check. |
+| Arm switch | Actual motor-arm switch or logic condition. Required for logging. Does not gate the **Consumed mAh** pack check. With **% sensor** or **Voltage estimate**, the optional remaining-mAh counter-reset guard still requires a valid actual ARM OFF indication for acceptance, even when logging is Off. |
 | Throttle source | Actual throttle control/channel. Remains active for diagnostics when logging is Off. |
 | Airborne gate | Optional switch/logic condition that must be ON to accumulate qualifying time. **---** and **Always on** pass. Remains active for diagnostics. |
 | Throttle low (raw) | Raw value at zero throttle, shown in **Flight diagnostics**. Default -1024. |
@@ -441,7 +449,7 @@ when you return to live readings.
 | Flight log / Dashboard | Switches between the dashboard and flight log. |
 | Flight diagnostics | Opens qualification status and live control readings. |
 | Reset live peaks | Clears the dashboard's RPM and Watts session peaks. It does not reset the flight count or the recorded flight's maxima. |
-| Accept battery counter... | Reviews [the pack check](#check-before-showing-remaining-charge) for **Consumed mAh**, or a reset of the optional remaining-mAh counter with another method. Check actual charge and the sensor before confirming. It cannot bypass a difference above 20 points or **CHECK CELLS/TYPE** in the pack check. Acceptance does not restore missing consumption, reset the sensor, fill the battery or change the flight count. |
+| Accept battery counter... | Shows the status and any remaining blockers for [the pack check](#check-before-showing-remaining-charge) with **Consumed mAh**, or reviews a reset of the optional remaining-mAh counter with another method. Check actual charge and the sensor before confirming. It cannot bypass a difference above 20 points or **CHECK CELLS/TYPE** in the pack check. Acceptance does not restore missing consumption, reset the sensor, fill the battery or change the flight count. |
 
 ## Display examples
 

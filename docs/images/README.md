@@ -5,6 +5,9 @@ The menu, configuration and diagnostics images show VoltDeck in the ETHOS
 airborne gate alone does not qualify a flight.
 
 The layout examples use illustrative values rather than recorded flights.
+The battery-check dialogs illustrate manual confirmation and a blocked
+consumption reading; read the stated difference and its direction before
+accepting a counter.
 
 The four pack-transition images show a paused session, its retained last log,
 a new qualifying session and a second qualified session.

@@ -70,19 +70,20 @@ avlesningene er kontrollert. Gjenværende mAh er også ukjent under kontrollen;
 **Consumed** kan fortsatt vise sensorens avlesning. Kontrollen gjelder ved alle
 forbruksnivåer, ikke bare når telleren er nær null.
 
-Hold motoren dearmert og la batteriet stabilisere seg. VoltDeck trenger gyldig
+La batteriet stabilisere seg. VoltDeck trenger gyldig
 pakkespenning, strøm og forbrukt mAh, fulgt av **10 sekunder med stabile
-avlesninger ved lav strøm**. Strømmen må være mellom null og **kapasitet / 20000 A**,
-begrenset til **0,5 A**: for 2500 mAh er grensen **0,125 A**. Spenningen kan variere
-med høyst **0,01 V per celle** i dette tidsrommet. Høyere strøm eller ARM PÅ
-avbryter målevinduet og krever minst **60 sekunder** for stabilisering før ny
-kontroll. En valgt faktisk **Arm switch** må være gyldig og AV. Tomt felt eller
-**Always on** gir ingen ARM-indikasjon; sørg selv for at motoren er sikkert
-deaktivert.
+avlesninger ved lav strøm**. Strømmen må være mellom null og **3 × kapasitet / 20000 A**,
+begrenset til **1,5 A**: grensen er **0,375 A for 2500 mAh** eller **0,60 A for
+4000 mAh**. Forskjellen mellom høyeste og laveste spenning kan være høyst
+**0,20 V for hele pakken**, ikke per celle. Høyere strøm, manglende avlesninger
+eller større spenningsvariasjon starter målevinduet på nytt. Det er ingen egen
+ventetid. **Arm switch** sperrer ikke denne batterikontrollen; den styrer
+fortsatt flyloggingen.
 
 Kontrollen sammenligner tellerens gjenværende prosent med en grov
-spenningsreferanse for valgt batteritype. Avviket måles i **prosentpoeng**, i
-begge retninger.
+spenningsreferanse for valgt batteritype. Mulig overestimering kontrolleres mot
+vinduets **laveste spenning**, og underestimering mot **høyeste spenning**.
+Det største avviket bestemmer resultatet, målt i **prosentpoeng**.
 Dialogen avrunder avviket opp til nærmeste 0,1 prosentpoeng; trekker du de to
 avrundede prosentene fra hverandre, kan resultatet derfor bli 0,1 poeng lavere.
 
@@ -91,6 +92,14 @@ avrundede prosentene fra hverandre, kan resultatet derfor bli 0,1 poeng lavere.
 | 10 prosentpoeng eller mindre | Godtas automatisk; beregnet prosent og batterisegmentene vises. |
 | Over 10, til og med 20 prosentpoeng | **CHECK PACK/COUNTER** beholdes i rødt og gjenværende lading er ukjent. Kontroller batteri og sensor, og bruk **Accept battery counter...** for å lese begge prosentene og avviket før bekreftelse. |
 | Over 20 prosentpoeng | Gjenværende lading forblir ukjent. Rett lading, batteriinnstillinger eller forbruksavlesning; menyen kan ikke omgå denne grensen. |
+
+**Accept battery counter...** viser hva som hindrer kontrollen, blant annet
+manglende eller uegnede kilder, målt strøm mot grensen, spenningsvariasjon eller
+fremdrift i 10-sekundersvinduet. Et høyere tellerestimat varsler om mulig
+overestimering; et lavere ber deg kontrollere forbruk, kapasitet og kalibrering
+av sensoren. Bekreftelsen bruker det kontrollerte spenningsområdet, slik at
+variasjon innenfor området ikke krever en identisk øyeblikksavlesning.
+Aktuell telemetri og batterioppsettet må fortsatt være gyldige når du bekrefter.
 
 For **LiFe** gir spenning ingen pålitelig prosentvis sammenligning.
 Etter samme lavstrømskontroll må du kontrollere faktisk lading, kapasitet og
@@ -115,8 +124,8 @@ gjenværende belastning påvirker resultatet. Visningen **Voltage estimate**
 beholder sin eksisterende skala, også **3,57 V = 30%** for Lipo; den er ikke
 referansen for denne kontrollen.
 
-**CHECK CELLS/TYPE** betyr at spenningen overstiger full cellevolt for valgt
-batteritype med mer enn 0,15 V/celle under samme tomgangsbetingelser. Rett
+**CHECK CELLS/TYPE** betyr at høyeste spenning i kontrollen overstiger full
+cellevolt for valgt batteritype med mer enn 0,15 V/celle. Rett
 **Cells**, **Battery type** eller spenningskilden; varselet kan ikke godtas bort
 med tellermenyen. Totalspenningen kan ikke fastslå riktig celletall.
 
@@ -361,7 +370,7 @@ korreksjonen.
 | Felt, i menyrekkefølge | Funksjon |
 |---|---|
 | Enable log | Slår på kvalifisering og modellspesifikk flytelling. |
-| Arm switch | Motorens faktiske arm-bryter eller logiske betingelse. Kreves for logging; aktivt også med logging av. Når valgt må den være gyldig og AV ved batterikontroll og tellergodkjenning. **---** og **Always on** gir ingen ARM-indikasjon for denne kontrollen. |
+| Arm switch | Motorens faktiske arm-bryter eller logiske betingelse. Kreves for logging. Sperrer ikke batterikontrollen ved **Consumed mAh**. Med **% sensor** eller **Voltage estimate** krever resetsperren for valgfri gjenværende mAh fortsatt en gyldig faktisk ARM AV-indikasjon ved godkjenning, også når logging er av. |
 | Throttle source | Faktisk gasskontroll/-kanal. Aktivt for diagnostikk også med logging av. |
 | Airborne gate | Valgfri bryter/logisk betingelse som må være PÅ for opptjening av kvalifiseringstid. **---** og **Always on** passerer. Aktivt for diagnostikk. |
 | Throttle low (raw) | Råverdi ved null gass, vist i **Flight diagnostics**. Standard -1024. |
@@ -440,7 +449,7 @@ når du går tilbake til aktuelle avlesninger.
 | Flight log / Dashboard | Bytter mellom hovedvisning og flylogg. |
 | Flight diagnostics | Åpner kvalifiseringsstatus og aktuelle kontrollavlesninger. |
 | Reset live peaks | Nullstiller hovedskjermens RPM- og Watt-maksimum. Endrer ikke flyteller eller maksimum i registrert flylogg. |
-| Accept battery counter... | Viser [batterikontrollen](#kontroll-før-gjenværende-lading-vises) ved **Consumed mAh**, eller et reset av den valgfrie telleren for gjenværende mAh med en annen metode. Kontroller faktisk lading og sensor før bekreftelse. Den kan ikke omgå avvik over 20 prosentpoeng eller **CHECK CELLS/TYPE** i batterikontrollen. Godkjenning gjenoppretter ikke manglende forbruk, nullstiller ikke sensoren, fyller ikke batteriet og endrer ikke flytellingen. |
+| Accept battery counter... | Viser status og eventuelle gjenværende sperrer for [batterikontrollen](#kontroll-før-gjenværende-lading-vises) ved **Consumed mAh**, eller et reset av den valgfrie telleren for gjenværende mAh med en annen metode. Kontroller faktisk lading og sensor før bekreftelse. Den kan ikke omgå avvik over 20 prosentpoeng eller **CHECK CELLS/TYPE** i batterikontrollen. Godkjenning gjenoppretter ikke manglende forbruk, nullstiller ikke sensoren, fyller ikke batteriet og endrer ikke flytellingen. |
 
 ## Visningseksempler
 
