@@ -1,11 +1,11 @@
 # VoltDeck
 A full-screen battery, telemetry and power dashboard for FrSky ETHOS 1.6.6 and 26.1.2.
 
-**VoltDeck 2026.10-v5: latest release.**
+**VoltDeck 2026.10-v6: latest release.**
 
-Physical X20RS/model testing previously passed on ETHOS 26.1.2.
+Physical radio testing of this version passed.
 
-[Download VoltDeck-2026.10-v5.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v5/VoltDeck-2026.10-v5.zip) | [Release notes](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v5)
+[Download VoltDeck-2026.10-v6.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v6/VoltDeck-2026.10-v6.zip) | [Release notes](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v6)
 
 ![VoltDeck: RPM and electrical power](docs/images/rpm-watts-lcd.png)
 
@@ -27,6 +27,10 @@ The screenshots use illustrative values.
 <td><img src="docs/images/rpm-watts-cell-lcd.png" alt="RPM Watts and average cell voltage"><br><b>Three values</b><br>RPM, Watts and average cell voltage.</td>
 <td><img src="docs/images/flight-log-vfr.png" alt="Synthetic flight summary and VFR graphs"><br><b>Flight summary</b><br>Peaks, duration and bounded RF history.</td>
 </tr>
+<tr>
+<td><img src="docs/images/rpm-watts-custom-lcd.png" alt="RPM Watts and Custom temperature"><br><b>Custom alongside RPM + Watts</b><br>Add a numeric sensor and choose its position.</td>
+<td><img src="docs/images/cell-volts-numeric.png" alt="Average cell voltage"><br><b>Cell voltage</b><br>Scale and colours follow the selected battery type.</td>
+</tr>
 </table>
 
 ## Highlights
@@ -37,6 +41,7 @@ The screenshots use illustrative values.
 - Green / yellow / orange / red battery thresholds and configurable low-battery WAV.
 - Measured RPM, a labelled KV estimate, Watts, average cell voltage or custom telemetry.
 - Numeric and retro LCD presentation; one, two or three supported metrics.
+- Custom telemetry alongside a preset, with a choice of row 1, 2 or 3.
 - Optional per-model flight counter, session peaks and last-flight RF graphs.
 - Optional automatic flight-log opening after sustained pack-voltage loss.
 - Source-named RSSI/VFR readings, correct inactive units and per-slot visual profiles.
@@ -44,7 +49,7 @@ The screenshots use illustrative values.
 
 ## Install VoltDeck
 
-1. Download [VoltDeck-2026.10-v5.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v5/VoltDeck-2026.10-v5.zip) from the release assets, not GitHub's automatically generated source archive.
+1. Download [VoltDeck-2026.10-v6.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v6/VoltDeck-2026.10-v6.zip) from the release assets, not GitHub's automatically generated source archive.
 2. Extract its `scripts/VoltDeck` folder onto the radio SD card so the final path is `scripts/VoltDeck/main.lua`.
 3. Remove any existing `scripts/VoltDeck/main.luac`, then restart ETHOS.
 4. Create a full-screen widget area and select **VoltDeck**.
@@ -86,7 +91,7 @@ Names follow the selected source, for example **RSSI 2.4G** or **VFR 900M**.
 Dashboard and flight-log sources can differ. Choose a preset for your protocol
 or set custom visual limits. Graphs retain brief signal drops and show gaps
 when readings are missing.
-See the [RF explanation](docs/Configuration.md#11-vfr-graphs-instead-of-rssi).
+See the [RF explanation](docs/Configuration.md#vfr-graphs-instead-of-rssi).
 
 ## Safety and compatibility
 

@@ -2,16 +2,21 @@
 
 [Home](../README.md) | [Installation](VoltDeck.md) | [Norsk](Konfigurasjon-norsk.md)
 
-The layout examples use illustrative readings. The menu and configuration images
-show the widget in ETHOS.
+Select **VoltDeck** in a full-screen widget area, then open **Configure widget**
+from the widget menu. Follow the groups below in their radio-menu order.
+Settings and source selections belong to the active model.
 
-## 1. Start with the model and battery
+After a page or model change, the first short press may select the widget and
+the next opens its menu. The widget renews ETHOS focus while selected and
+visible. Short and long presses still use the radio's standard menus.
 
-Download the named [VoltDeck-2026.10-v5.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v5/VoltDeck-2026.10-v5.zip) package,
-extract its `scripts/VoltDeck` folder onto the SD card and restart ETHOS.
-Select **VoltDeck** in a full-screen widget area. VoltDeck shows the active ETHOS
-model's name. Open the widget menu and choose **Configure widget** to change
-settings. Choose **Flight log** or **Flight diagnostics** to switch views.
+Grey fields are inactive for the current method or display. Their saved values
+remain available when you change back. Source pickers use ETHOS's normal source
+list; check the source type and unit as well as its name.
+
+The setup pictures show the simulator's menu fields. Select the sensors fitted
+to your own model; the tables explain what each source must measure.
+The dashboard and flight-log examples use illustrative readings.
 
 <table>
 <tr>
@@ -20,402 +25,510 @@ settings. Choose **Flight log** or **Flight diagnostics** to switch views.
 </tr>
 </table>
 
-| Configuration group | Field | Example |
-|---|---|---|
-| Battery | Remaining from | Consumed mAh |
-| Battery | Battery type | Lipo |
-| Battery | Capacity | 2500 mAh |
-| Battery | Cells | 6 |
-| Battery | mAh display | Consumed |
-| Appearance | Background | Black |
-| Appearance | Image source | Selected model |
-| Appearance | Font file | Leave blank for native ETHOS fonts |
-| Telemetry | Pack voltage | Your pack-voltage source, in V |
-| Telemetry | Current | Your current source, in A |
-| Telemetry | Consumed mAh | Your ESC/sensor consumption source |
-| Motor / RPM | RPM source | Your actual mechanical RPM source |
+## 1. Battery
 
-Select sensors from your model's equipment.
-Check the configured cell count and consumption reset before every new pack.
+![Battery settings](images/voltdeck-setup-battery.png)
 
-At 650 mAh consumed from a 2500 mAh pack:
+| Field | What to select |
+|---|---|
+| Remaining from | **Consumed mAh** uses capacity minus consumption after the pack check below. **% sensor** uses a remaining-charge percentage. **Voltage estimate** estimates charge from pack voltage, battery type and cell count. |
+| Battery type | Lipo, LiHV, Li-ion or LiFe, matching the pack. Used by the voltage estimate, cell-meter scale, consumption check, full-pack KV scale and battery label. |
+| Capacity | Actual pack capacity in mAh. Also used by **mAh display / Remaining**, even when the main battery percentage comes from another method. |
+| Cells | Number of series cells. Used by the battery label, average cell voltage, consumption check, voltage estimate and full-pack KV scale. |
+| mAh display | **Consumed** shows the selected consumption reading. **Remaining** shows capacity minus trusted consumption. This separate mAh value still needs **Consumed mAh** telemetry with either of the other percentage methods. |
 
-```text
-remaining mAh = 2500 - 650 = 1850
-remaining %  = 100 * 1850 / 2500 = 74%
-```
+For a checked 2500 mAh pack with 650 mAh consumed, the capacity calculation gives
+1850 mAh remaining and 74%. Configure the consumption sensor's reset for each
+new or recharged pack; VoltDeck does not reset that sensor.
 
-The percentage stays between 0 and 100%. This is a capacity calculation, not a
-direct cell-voltage measurement. An inaccurate current/consumption sensor,
-wrong capacity or unreset counter produces an inaccurate percentage.
+**Voltage estimate** is approximate and changes with load and voltage sag.
+**% sensor** needs a source that actually supplies remaining charge from 0 to
+100%; selecting a voltage source does not convert it to a percentage.
 
-If you choose **Percent sensor**, select a remaining-charge source in **%**.
-**Voltage estimate** is approximate; prefer consumed mAh when reliable
-consumption telemetry is available.
+An unexpected consumption-counter decrease makes calculated remaining capacity
+unknown. After checking the actual charge and mAh reading, use
+**Accept battery counter...** as described under [Widget actions](#widget-actions).
+Brief telemetry loss or motor disarming does not accept a reset automatically.
 
-If charge becomes unknown after a consumption-counter reset, check the
-battery's charge and the current mAh reading. Exit preview, disarm the motor,
-then choose **Accept battery counter...** in the widget menu and confirm.
-This accepts the current reading; it does not reset the sensor or flight count.
+With **% sensor** or **Voltage estimate**, this reset guard still protects the
+optional **mAh display / Remaining**. Acceptance requires a valid physical ARM
+source OFF, valid consumed mAh and live pack voltage when a voltage source is
+selected. It affects remaining mAh only; the main percentage keeps following
+the selected method.
 
-## 2. Retro LCD RPM
+If your ESC starts at **0 mAh** each time the model is powered on, that reading
+does not include earlier flights on the same pack. For multiple flights without
+charging, use an accumulated consumption source that retains those earlier
+readings. A calculated ETHOS sensor can be used; check its reset settings and
+verify that switching the model off and on preserves its total. Reset it only
+for a new or recharged pack.
 
-![Retro LCD RPM](images/rpm-lcd.png)
+### Check before showing remaining charge
 
-| Group | Field | Setting |
-|---|---|---|
-| Lower deck | Show | RPM |
-| Lower deck | Meter style | Retro LCD |
-| Lower deck | Red zone | 85% of the configured meter range |
-| Motor / RPM | RPM value | Measured RPM |
-| Motor / RPM | RPM scale | Manual |
-| Motor / RPM | RPM max | 12000 rpm |
+With **Remaining from = Consumed mAh**, radio start or detected pack loss
+shows **CHECKING PACK**, **-- %** and empty battery segments until the readings
+are checked. The remaining-mAh display is also unknown during this check;
+**Consumed** can still show the sensor's reading. The check applies at every
+consumption level, not just when the counter is near zero.
 
-The example shows **8600 rpm** with a **10050 rpm** session peak.
-The scale stays fixed at 12000 when the reading falls.
+Keep the motor disarmed and let the pack settle. VoltDeck needs valid pack
+voltage, current and consumed mAh, followed by **10 seconds of stable low-current
+readings**. Current must be between zero and **capacity / 20000 A**, capped at
+**0.5 A**: for 2500 mAh, the limit is **0.125 A**. Voltage may vary by at most
+**0.01 V per cell** during that window. Higher current or ARM ON interrupts the
+window and requires at least **60 seconds** to settle before checking again.
+If a genuine **Arm switch** is selected, it must be valid and OFF. Leaving it
+blank or choosing **Always on** does not supply an ARM indication; keep the
+motor safely disabled yourself.
 
-A session peak is not necessarily a last-flight peak. Use **Reset live peaks**
-from the widget menu when a fresh session is needed.
+The check compares the counter's remaining percentage with a coarse voltage
+reference for the selected type. The difference is measured in **percentage
+points**, in either direction.
+The dialog rounds the difference up to the next 0.1 point; subtracting its two
+rounded percentages can therefore give a result 0.1 point lower.
 
-## 3. Retro LCD RPM + Watts
+| Difference | Result |
+|---|---|
+| 10 percentage points or less | Automatically accepted; the calculated percentage and battery segments appear. |
+| More than 10, up to and including 20 points | **CHECK PACK/COUNTER** remains red and remaining charge stays unknown. Check the pack and sensor, then use **Accept battery counter...** to review both percentages and the difference before confirming. |
+| More than 20 points | Remaining charge stays unknown. Correct the charge, battery settings or consumption reading; the menu cannot bypass this limit. |
 
-![Retro LCD RPM plus Watts](images/rpm-watts-lcd.png)
+For **LiFe**, voltage cannot provide a dependable percentage comparison.
+After the same low-current check, inspect actual charge, capacity and consumed
+mAh and confirm through **Accept battery counter...**. There is no calculated
+voltage percentage or difference to approve for this type.
 
-Keep the RPM settings above, then choose:
+Acceptance belongs to that battery connection. During flight, VoltDeck uses
+the counter without repeating the voltage comparison, so voltage sag does not
+revoke acceptance. A consumption-counter reset still needs explicit acceptance.
+Continuous loss of **Pack voltage** for **Pack loss delay**, including loss of
+all model telemetry, requires a new check. Radio restart or changes to battery
+sources, capacity, cells or type also check again. Returning after an extended
+pause in the widget's battery readings can require a new check as well. A
+shorter gap preserves acceptance, but missing live voltage or consumption still
+shows unknown charge.
 
-| Group | Field | Setting |
-|---|---|---|
-| Lower deck | Show | RPM + Watts |
-| Lower deck | Meter style | Retro LCD |
-| Lower deck | Watt max | 1600 W |
+This is a plausibility check at stable low load, not a measurement of fully
+relaxed charge. Its separate references use [ST's 4.20 V and 4.35 V OCV
+tables](https://github.com/st-sw/STC3115GenericDriver/blob/master/Docs/Config/STC3115%20OCV%20curve%20-%20default%20register%20values.pdf)
+for Lipo/Li-ion and LiHV respectively. Temperature, age, the individual pack
+and residual load affect the result. The **Voltage estimate** display retains
+its existing scale, including **3.57 V = 30%** for Lipo; it is not the reference
+used by this check.
 
-VoltDeck calculates electrical input power from the selected pack voltage
-and current sources. You do not need to create another sensor just to show it:
+**CHECK CELLS/TYPE** means the voltage exceeds the selected battery type's full
+cell voltage by more than 0.15 V/cell under the same idle conditions. Correct
+**Cells**, **Battery type** or the voltage source; counter acceptance cannot
+dismiss this warning. Total voltage cannot determine the correct cell count.
 
-```text
-22.8 V * 38.6 A = 880.08 W
-```
-
-The display rounds this to **880 W**. This is electrical input power, not
-shaft power or propeller thrust. Both readings must be valid; missing
-voltage or current produces dashes, not a fabricated zero.
-
-## 4. Three metrics: RPM + Watts + average cell voltage
-
-![RPM Watts and average cell voltage](images/rpm-watts-cell-lcd.png)
-
-Set **Lower deck / Show = RPM + W + cell** and **Meter style = Retro LCD**.
-The lower deck uses three compact rows automatically.
-
-The example uses **21.8 V**, **42.4 A** and **6 cells**:
-
-```text
-input power = 21.8 * 42.4 = 924.32 W
-average cell voltage = 21.8 / 6 = 3.63 V
-```
-
-Average cell voltage cannot reveal which individual cell is weak. Use a
-real cell-monitoring source when individual-cell safety information matters.
-
-## 5. Numeric RPM, standalone Watts and cell voltage
+Check the pack and sensor before accepting a counter. **Do not accept 0 mAh on a
+partly used pack**: restore the correct accumulated reading, fit a charged pack,
+or select **Voltage estimate** and allow for its limitations. This check cannot
+recover missing consumption or validate an incorrect current source.
+**Check that the pack is fully charged before every flight.** Compare reported
+consumed mAh with the amount the charger puts back over several flights,
+returning to the same charge endpoint. Investigate a consistent difference and
+follow the ESC manufacturer's calibration instructions if supported; for example,
+[Scorpion Tribunus II provides Current Sensitivity Gain](https://www.scorpionsystem.com/files/download/Tribunus%20II%20Instructions%20-%20220922.pdf).
+A passed check does not guarantee a particular reserve at landing.
 
 <table>
 <tr>
-<td><img src="images/rpm-numeric.png" alt="Numeric RPM"><br><b>Numeric RPM</b><br>Show = RPM; Meter style = Numeric.</td>
-<td><img src="images/watts-lcd.png" alt="Standalone retro LCD Watts"><br><b>Standalone Watts</b><br>Show = Watts; Meter style = Retro LCD.</td>
+<td><img src="images/battery-checking.png" alt="Battery qualification in progress"><br><b>Checking pack</b><br>Remaining charge stays unknown during the stable low-load check.</td>
+<td><img src="images/battery-manual-confirm.png" alt="Confirmation with a 14 percentage-point difference"><br><b>Manual confirmation</b><br>Read both estimates and the difference before accepting the counter.</td>
 </tr>
-</table>
-
-![Numeric average cell voltage on a custom background](images/cell-volts-numeric.png)
-
-For the blue-background example, select **Background = Custom**, choose a
-dark blue **Background color** and a blue **Accent color**. Choose
-**Show = Cell volts**, **Meter style = Numeric**, and
-**Battery / mAh display = Remaining**.
-
-**Background = Radio theme** follows ETHOS theme colors.
-**Background = Black** is pure black. Custom colors are independent of
-the model picture; transparency lets the chosen background show through.
-
-## 6. Custom telemetry
-
-![Retro LCD ESC temperature](images/custom-temperature-lcd.png)
-
-| Group | Field | Example |
-|---|---|---|
-| Lower deck | Show | Custom |
-| Lower deck | Meter style | Retro LCD |
-| Lower deck | Custom source | ESC temperature |
-| Lower deck | Custom label | ESC TEMPERATURE |
-| Lower deck | Custom min / max | 0 / 100 |
-| Lower deck | Decimals (-1 auto) | 0 |
-
-The example shows **54 C** with radio-theme colors.
-The actual unit comes from the selected source. A temperature source,
-altitude, speed or another numeric source can be used; select a sensible
-range and label for that equipment.
-
-## 7. KV estimate without RPM telemetry
-
-![KV-based estimated RPM](images/kv-estimate-lcd.png)
-
-| Group | Field | Example |
-|---|---|---|
-| Motor / RPM | RPM value | KV x volts (est.) |
-| Motor / RPM | Motor KV | 420 rpm/V |
-| Motor / RPM | Estimate factor | 85%, illustrative only |
-| Motor / RPM | RPM scale | Full-pack KV |
-| Lower deck | Show / Meter style | RPM / Retro LCD |
-
-At the example's live voltage:
-
-```text
-no-load potential = 420 * 22.8 = 9576 rpm
-illustrative factor = 9576 * 0.85 = 8140 rpm, rounded
-full-pack potential = 420 * 6 * 4.20 = 10584 rpm
-display scale ceiling = 11000 rpm, rounded up
-```
-
-The screen explicitly says **RPM ESTIMATE**. An 85% factor is not a
-universal propeller-load correction or a recommendation. Use measurements
-from the actual motor/propeller setup, or keep the default **100%** to show
-no-load potential. Battery C rating does not provide a reliable correction
-factor by itself.
-
-The full-pack scale stays fixed while live voltage drops due to discharge
-or load-induced sag. This shows reduced electrical speed potential;
-it does not prove the measured shaft speed or distinguish all causes of sag.
-
-## 8. Battery colors and low-battery audio
-
-<table>
 <tr>
-<td><img src="images/battery-yellow-40.png" alt="40 percent yellow battery"><br><b>40%: yellow</b><br>1500 mAh consumed.</td>
-<td><img src="images/battery-orange-35.png" alt="35 percent orange battery"><br><b>35%: orange</b><br>1625 mAh consumed.</td>
+<td><img src="images/battery-counter-check.png" alt="Consumption-counter warning"><br><b>Check pack/counter</b><br>6S Lipo at 22.9 V, 303 mAh and 0 A: remaining charge is unknown.</td>
+<td><img src="images/battery-blocked-dialog.png" alt="Difference above 20 percentage points with only a Close button"><br><b>Above 20 percentage points</b><br>This dialog explains the mismatch; it cannot approve it.</td>
+</tr>
+<tr>
+<td colspan="2"><img src="images/battery-cells-check.png" width="400" alt="Cell-count or battery-type warning"><br><b>Check cells/type</b><br>25.2 V with 5S selected: correct the battery setup.</td>
 </tr>
 </table>
 
-![30 percent red battery and low battery indication](images/battery-red-30.png)
+## 2. Appearance
 
-| Remaining charge | Battery color |
+![Appearance settings](images/voltdeck-setup-appearance.png)
+
+| Field | What it changes |
 |---|---|
-| More than 40% | Green |
-| More than 35%, up to and including 40% | Yellow |
-| More than 30%, up to and including 35% | Orange |
-| 30% or below | Red |
+| Background | **Radio theme** follows ETHOS colors; **Black** uses a black background; **Custom** uses your background color. |
+| Background color | Active with **Custom**. |
+| Accent color | Active with **Black** or **Custom**. **Radio theme** supplies its own accent. |
+| Font file | Optional font path. Leave blank for native ETHOS fonts. |
+| Image source | **Selected model** reuses the model picture; **Image file** selects a separate picture; **Hidden** removes it. |
+| Image file | Active with **Image file**. Choose an image from `/bitmaps/models`. |
 
-In **Battery alert**, enable **Battery alert**, select **Alert WAV**, and
-set **Repeat** in seconds. Set **Audio folder** first and reopen configuration
-before choosing the file from that folder. Use PCM WAV files: 32 kHz, mono,
-16-bit. An empty, invalid or unavailable WAV uses a tone.
-Repetition also waits for the selected sound to finish.
+Use an ordinary **8-bit RGB or RGBA PNG**. **290 × 191** fits the picture area;
+**480 × 272** and **480 × 320** are also supported. Aspect ratio is preserved.
+The limit is 160,000 pixels, so **800 × 480** is too large. Indexed/palette and
+16-bit-channel PNGs are unsupported. Transparency lets the chosen background
+show through.
 
-**Alert on estimate** separately permits alarms based on the approximate
-voltage-estimate battery method. Consumed mAh is the preferred method in
-this guide. The alarm is disabled in preview.
+The example [Ultimate AMR artwork](images/ultimate-amr.png) is 290 × 191;
+see [NOTICE](../NOTICE.md) for its terms.
 
-## 9. Missing telemetry is intentionally obvious
+## 3. Battery alert
 
-![Missing telemetry uses dashes and a neutral battery](images/telemetry-unavailable.png)
+![Battery alert settings](images/voltdeck-setup-alert.png)
 
-Missing or rejected telemetry displays **--**, with neutral battery segments.
-An inactive selected RSSI source keeps **dB**; an inactive VFR source keeps
-**%**. An unselected slot uses RF1/RF2 and dB as its fallback.
-Other units are rejected for RF readings rather than labelled dB.
-The transmitter battery and timer can still be valid while model telemetry
-is unavailable. Check source selection, source units and the live link;
-do not interpret missing consumed mAh as a full pack.
-
-## 10. Flight summary with synthetic RSSI history
-
-![Synthetic flight log with RSSI graphs](images/flight-log-rssi.png)
-
-Open **Flight log** from the widget menu.
-
-| Example summary | Example value |
+| Field | What it does |
 |---|---|
-| Flight duration | 05:18 |
-| Maximum measured RPM field | 10350 rpm |
-| Maximum current | 64.8 A |
-| Pack low / high | 20.8 / 25.2 V |
-| Maximum electrical input power | 1498 W |
-| Maximum KV potential, not measured | 10584 rpm |
-| Displayed counter | 42 |
+| Battery alert | Enables the widget's low-battery sound at **30% or below**. |
+| Alert on estimate | Active when the alert is enabled and **Remaining from = Voltage estimate**. Allows the approximate voltage percentage to trigger audio. |
+| Repeat | Minimum time between alerts, in seconds. Active when the alert is enabled. |
+| Audio folder | Folder for the sound picker, normally `/audio`. Active when the alert is enabled. Change the folder, then reopen configuration before picking a file. |
+| Alert WAV | Active when the alert is enabled. Select a PCM WAV: **32 kHz, mono, 16-bit**. A missing or invalid file uses a tone. |
 
-The trace shows strong reception, brief dips below warning/critical limits,
-and a missing-data gap. A gap means no valid reading was available.
-The example explicitly selects the **ACCST** visual profile: **45 dB low**
-and **42 dB critical**. ACCESS/TD/TW use **35/32 dB** instead. Choose the
-profile for the protocol, not merely the frequency named by the sensor.
+Repetition waits for the selected sound to finish. Brief recovery or missing
+readings do not restart the waiting interval. Preview does not play alerts.
+These settings do not change ETHOS's own telemetry alarms.
 
-## 11. VFR graphs instead of RSSI
+## 4. Telemetry
 
-![Synthetic flight log with VFR percent graphs](images/flight-log-vfr.png)
+![Telemetry sources](images/voltdeck-setup-telemetry.png)
 
-Select real VFR sources in **Flight log / RF graph 1 / RF graph 2** when
-those sources are available. Their source units must be **%**.
-The dashboard RF sources and the graph sources can be different.
+![Remaining telemetry sources](images/voltdeck-setup-telemetry-more.png)
 
-The example uses the widget's **95% early-quality / 50% low** visual profile.
-Yellow highlights deteriorating valid-frame reception; red marks the low
-threshold. **95% is a visual warning threshold, not a FrSky alarm default.**
+Choose sources from **Telemetry** for measurements, and an ETHOS timer for
+**Flight timer**. Similar names can represent different units.
 
-| RF signals / Profile | RSSI yellow / red | VFR yellow / red |
+| Field, in menu order | Required measurement and use |
+|---|---|
+| Pack voltage | Total drive-pack voltage in **V**; **mV** is converted to V. Used by the dashboard, Watts, average cell voltage, voltage/KV estimates and pack-session detection. |
+| Current | Drive-pack current in **A**; **mA** is converted to A. Used by the dashboard, calculated Watts, flight maximum current and the initial pack check. |
+| Consumed mAh | Accumulated consumption since the pack was charged, in **mAh**; **Ah** is converted to mAh. Used by the mAh display and consumption-based remaining capacity. Remains active with every battery method. |
+| RF1 source | RSSI in **dB**, or VFR/link quality in **%**, for the first dashboard slot. |
+| RF2 source | RSSI in **dB**, or VFR/link quality in **%**, for the second dashboard slot. |
+| Rx1 voltage | First receiver-battery voltage in **V** or **mV**. |
+| Rx2 voltage | Second receiver-battery voltage in **V** or **mV**, if fitted. |
+| Tx voltage | Transmitter voltage in **V** or **mV**. Leave blank to use the radio's own battery source. |
+| Flight timer | An ETHOS timer, reported in seconds. This dashboard timer is separate from the flight log's accumulated qualifying time. |
+| Battery % source | Remaining charge in **%**, from 0 to 100. Active only with **Remaining from = % sensor**. |
+
+Prefer sources with the correct ETHOS unit. A raw numeric voltage, current,
+consumption or RPM source must already supply V, A, mAh or rpm respectively;
+its text label does not rescale the value. For **Battery % source**, a raw source
+must explicitly carry a `%` unit label and contain a valid 0–100 value.
+RF sources require ETHOS's actual dB or % unit; a raw source's text label is not sufficient.
+The initial pack check requires actual ETHOS V/mV and A/mA units. Raw voltage
+and current sources remain usable for their ordinary displays but cannot
+qualify **Consumed mAh** remaining charge.
+
+Missing or rejected telemetry shows **--**. It does not mean zero consumption
+or a full pack. An inactive selected RF source keeps its name and unit; unsupported
+RF units are rejected. The radio battery and timer may remain available while
+model telemetry is absent.
+
+![Unavailable model telemetry](images/telemetry-unavailable.png)
+
+## 5. RF signals
+
+![RF profile settings](images/voltdeck-setup-rf.png)
+
+![Remaining RF thresholds](images/voltdeck-setup-rf-more.png)
+
+| Field, in menu order | What it controls |
+|---|---|
+| RF1 profile | **ACCESS / TD / TW**, **ACCST** or **Custom**, for slot 1 and its flight graph. Choose the protocol, rather than relying on the sensor's frequency name. |
+| RF2 profile | Same choices for slot 2 and its flight graph. |
+| RSSI scale min | Lower end of the RSSI meter/graph, in dB. |
+| RSSI scale max | Upper end of the RSSI meter/graph, in dB; must exceed the minimum. VFR always uses 0–100%. |
+| RF1 low RSSI | Slot 1's yellow threshold in dB; active with **RF1 profile = Custom**. |
+| RF1 critical RSSI | Slot 1's red threshold in dB; active with **Custom**. |
+| RF1 early VFR | Slot 1's yellow threshold in %; active with **Custom**. |
+| RF1 low VFR | Slot 1's red threshold in %; active with **Custom**. |
+| RF2 low RSSI | Slot 2's yellow threshold in dB; active with **RF2 profile = Custom**. |
+| RF2 critical RSSI | Slot 2's red threshold in dB; active with **Custom**. |
+| RF2 early VFR | Slot 2's yellow threshold in %; active with **Custom**. |
+| RF2 low VFR | Slot 2's red threshold in %; active with **Custom**. |
+
+Select **Custom** before editing that slot's limits. Both dB and % limits are
+available because the dashboard and graph can use different kinds of RF source.
+
+| Profile | RSSI yellow / red | VFR yellow / red |
 |---|---|---|
-| ACCESS / TD / TW | <=35 / <=32 dB | <=95 / <=50% |
-| ACCST | <=45 / <=42 dB | <=95 / <=50% |
-| Custom | Configured separately per RF slot | Configured separately per RF slot |
+| ACCESS / TD / TW | ≤35 / ≤32 dB | ≤95 / ≤50% |
+| ACCST | ≤45 / ≤42 dB | ≤95 / ≤50% |
+| Custom | Your limits for that slot | Your limits for that slot |
 
-Each slot has a profile and four custom limits under **RF signals**.
-Editing a limit automatically selects **Custom** for that slot.
-Choose a preset to use its limits, or select **Custom** to use your own.
+These are visual thresholds. They do not configure the radio's alarms;
+95% is VoltDeck's early VFR marking, not an ETHOS alarm setting.
 
-The source's name and unit appear on the dashboard and graph.
-Frequency alone cannot identify ACCESS, TD, TW or ACCST.
+## 6. Lower deck
 
-![Inactive source names and units](images/rf-inactive-units.png)
+![Lower-deck settings](images/voltdeck-setup-lower-deck.png)
 
-The dashboard example retains RSSI 2.4G in dB and
-VFR 900M in %, even though both readings are unavailable. Dashes are
-missing data, not zero signal.
-VFR uses a 0-100% scale; RSSI uses the configurable dB scale.
+![Remaining lower-deck settings](images/voltdeck-setup-lower-deck-more.png)
 
-VFR measures valid-frame percentage and is generally the more direct
-control-link quality indicator; RSSI remains useful for received strength.
-If available, **Rx VFR** combines valid frames across bands and is useful as
-an overall link-quality indicator. A poor individual band need not mean an
-equally poor combined link. Neither graph guarantees a safe connection.
-See [FrSky's telemetry manual](https://ethos-doc.frsky-rc.com/model-setup/telemetry/).
-
-Choose graph sources before flying. A flight keeps the sources, names and
-units selected at its start. Visual profiles remain adjustable.
-
-Missing data leaves a gap in the graph; brief low readings remain visible.
-Live graphs can lag by a few seconds.
-
-## 12. Configure flight detection for the actual model
-
-| Group: Flight log | Initial example |
+| Field | What it controls |
 |---|---|
-| Enable log | On |
-| Arm switch | Actual motor-arm condition |
-| Throttle source | Actual throttle channel/source |
-| Airborne gate | Optional suitable airborne condition |
-| Throttle low / high | -1024 / 1024 for that source range |
-| Flight minimum | 60 s |
-| Throttle gate | 50% |
-| High throttle | 5 s cumulative |
-| Pack loss delay | 10 s (continuous missing pack voltage) |
-| Auto-open log  | Off |
-| Extra log delay  | 5 s after session completion |
-| RF graph 1 / 2 | RSSI or VFR sources for that model |
+| Show | **Only Custom**, **RPM**, **Watts**, **Cell volts**, **Voltage estimate**, **RPM + Watts**, **RPM + W + cell** or **Hidden**. A selected Custom source adds a row to the chosen display. |
+| Meter style | **Numeric** for values, or **Retro LCD** for values with segmented meters. Inactive with **Hidden**. |
+| Custom source | Any suitable numeric source, available whenever Show is not **Hidden**. Its unit comes from the source. Choose **---** to remove the additional row. |
+| Custom position | Position **1**, **2** or **3** from top to bottom. Active when a Custom source accompanies another display. With fewer rows, a position beyond the last row places Custom last. |
+| Custom label | Active when Custom is included. Leave blank to use the source name. |
+| Custom min | Lower end of the custom meter; active when Custom is included with **Retro LCD**. |
+| Custom max | Upper end of the custom meter; active when Custom is included with **Retro LCD**. Must exceed the minimum. |
+| Decimals (-1 auto) | Active when Custom is included. **-1** uses the source's decimals; 0–3 selects a fixed number. |
+| Red zone | Start of the red part, as a percentage of the meter range, for **RPM**, **Watts** and **Custom** with **Retro LCD**. Cell volts and Voltage estimate use battery thresholds instead. |
+| Watt max | Upper limit in W, active when **Watts** is included in a **Retro LCD** display. |
 
-Set **Throttle low (raw) / high (raw)** to the raw endpoints shown in
-**Flight diagnostics**, not the channel monitor's percentage display. Sources
-can use -1024/+1024, -100/+100 or 0/100; verify the selected source. The widget
-normalizes these endpoints to 0-100% throttle.
+Watts is calculated from **Pack voltage × Current**, so no separate power sensor
+is needed. It is electrical input power. Cell volts is **Pack voltage ÷ Cells**;
+this average does not identify a weak individual cell. The lower-deck voltage
+estimate can be shown alongside a main battery percentage based on consumption.
 
-A qualifying flight requires the arm condition, valid pack telemetry and
-the time/throttle gates. The optional airborne gate can improve filtering.
-A long armed bench test can still qualify: this logic does not prove that
-the aircraft is flying. Disable logging during bench work when appropriate.
+### Example: RPM, power and ESC temperature
+
+Set **Show = RPM + Watts**, select your ESC temperature sensor as **Custom
+source**, and set **Custom position = 3**. The rows become RPM, Watts and ESC
+temperature. The temperature source should report °C; its meter limits can, for
+example, be 0–100 °C. These limits only set the display scale, not a temperature
+alarm. **Only Custom** shows that source alone.
+
+| Custom position | Row 1 | Row 2 | Row 3 |
+|---|---|---|---|
+| 1 | Custom | RPM | Watts |
+| 2 | RPM | Custom | Watts |
+| 3 | RPM | Watts | Custom |
+
+The lower deck has at most three rows. With **RPM + W + cell**, selecting a
+Custom source replaces the cell row. Clearing Custom brings the cell row back.
+A selected source keeps its row during a telemetry gap and shows an unknown
+value until readings return.
+
+![RPM, Watts and Custom temperature](images/rpm-watts-custom-lcd.png)
+
+### Cell-voltage scale and colours
+
+**Cell volts** uses a fixed scale for the selected battery type, rather than
+starting at zero. Both its value and filled meter segments follow cell voltage.
+Values at or below the low boundary, or above the upper boundary, are red.
+
+| Battery type | Meter scale, V/cell | Low red boundary, V/cell | Upper boundary, V/cell |
+|---|---|---|---|
+| Lipo | 3.27–4.20 | 3.57 | 4.20 |
+| LiHV | 3.37–4.35 | 3.685 | 4.35 |
+| Li-ion | 2.97–4.20 | 3.36 | 4.20 |
+| LiFe | 2.77–3.65 | 3.055 | 3.65 |
+
+For Lipo, the cell value is orange above 3.57 through 3.615 V, yellow above
+3.615 through 3.66 V, and green above 3.66 through 4.20 V. Other types use the
+same 30/35/40% boundaries of their existing linear voltage estimate. The main
+battery percentage keeps its selected calculation method and rounds to a whole
+percent, so its colour can differ from the cell value near a boundary.
+Cell colours use the unrounded voltage: a displayed 4.20 V can be slightly
+above 4.20 V and therefore red.
+
+These are approximate display thresholds, not a measurement of actual charge.
+The Lipo estimate retains **3.57 V = 30%**; load and voltage recovery affect the
+reading. LiHV's upper boundary is **4.35 V**, matching
+[Tattu's LiHV guidance](https://www.genstattu.com/content/instock/LiHv-Manual.pdf).
+Always use the limits printed by your battery manufacturer, including for LiFe.
+The displayed average cannot establish whether every individual cell is within
+its limits.
+
+![Lipo cell voltage at the low red boundary](images/cell-voltage-lipo-low.png)
+
+![LiHV cell voltage at its full-pack boundary](images/cell-voltage-lihv-full.png)
+
+## 7. Motor / RPM
+
+![Motor and RPM settings](images/voltdeck-setup-rpm.png)
+
+| Field | What it controls |
+|---|---|
+| RPM source | Actual mechanical speed in **rpm** (ETHOS may display **r/m**). Active for a measured-RPM lower deck or when logging is enabled. The flight log keeps measured RPM even if the dashboard shows an estimate. |
+| RPM value | **Measured RPM** or **KV x volts (est.)**. Active when the lower deck includes RPM. |
+| Motor KV | Motor rating in rpm/V. Used by a KV estimate, the **Full-pack KV** meter scale, and the flight log's KV-potential field. Logging keeps this field active even without an RPM lower deck. |
+| Estimate factor | 10–100%, active for a KV-estimated RPM display. Default 100% shows no-load potential; choose a lower factor only from measurements of your motor/propeller setup. |
+| RPM scale | **Manual** or **Full-pack KV**, active for an RPM **Retro LCD** meter. The latter uses battery type, cell count and KV to keep a fixed full-pack scale. |
+| RPM max | Manual meter ceiling in rpm. Also available as the fallback when **Full-pack KV** has no valid KV value. Active only for the applicable RPM **Retro LCD** scale. |
+
+KV × live pack voltage estimates electrical speed potential. It does not measure
+shaft speed. The dashboard labels it **RPM ESTIMATE**. Its factor is separate
+from the flight log's uncorrected **KV potential**.
+
+## 8. Flight log
+
+![Flight-log settings](images/voltdeck-setup-flight.png)
+
+![Flight qualification and session timing](images/voltdeck-setup-flight-more.png)
+
+![RF graphs, reset counter and Preview](images/voltdeck-setup-flight-end.png)
+
+| Field, in menu order | What it does |
+|---|---|
+| Enable log | Enables qualification and per-model flight counting. |
+| Arm switch | Actual motor-arm switch or logic condition. Required for logging; remains active when logging is Off. When selected, it must be valid and OFF during the pack check and counter acceptance. **---** and **Always on** do not provide an ARM indication for that check. |
+| Throttle source | Actual throttle control/channel. Remains active for diagnostics when logging is Off. |
+| Airborne gate | Optional switch/logic condition that must be ON to accumulate qualifying time. **---** and **Always on** pass. Remains active for diagnostics. |
+| Throttle low (raw) | Raw value at zero throttle, shown in **Flight diagnostics**. Default -1024. |
+| Throttle high (raw) | Raw value at full throttle. Default 1024; must exceed the low endpoint. Both endpoints remain active for diagnostics. |
+| Flight minimum | Minimum accumulated qualifying time; default 60 s. Active when logging is On. |
+| Throttle gate | Normalized throttle threshold; default 50%. Active when logging is On. |
+| High throttle | Required accumulated time at/above the throttle gate; default 5 s. Active when logging is On. |
+| Pack loss delay | Continuous absence of valid positive **Pack voltage** before a session ends; default 10 s, range 3–120 s. Always active because it also requires a new pack check and permits a new consumption-counter reading after pack loss. |
+| Auto-open log | Opens the log after a qualified session ends. Active when logging is On; default Off. |
+| Extra log delay | Additional wait after **Pack loss delay**; default 5 s, range 0–120 s. Active when logging and auto-open are both On. |
+| RF graph 1 | Optional RSSI **dB** or VFR **%** source for graph 1; blank uses **RF1 source**. Active when logging is On. |
+| RF graph 2 | Same for graph 2; blank uses **RF2 source**. Active when logging is On. |
+| Reset counter | Active when logging is On. **Reset...** opens a confirmation. Disarm and disconnect the pack long enough to end its session first. Confirmation resets this model's count and clears its retained log. |
+
+Read throttle endpoints from **Flight diagnostics**, rather than the channel
+monitor's percentage. Sources may use -1024/+1024, -100/+100 or 0/100.
+VoltDeck converts the selected endpoints to 0–100%; mid-stick can therefore be
+50% even when the channel monitor shows 0%.
+
+Qualification needs ARM ON, valid throttle and pack voltage, a passing airborne
+gate and both time requirements. The high-throttle seconds are cumulative.
+An armed bench run can qualify; an airborne condition helps filter it but does
+not prove that the aircraft is flying. Disable logging for bench work that
+should not count.
 
 ### One session per battery connection
 
-Motor ARM is a safety/qualification condition, not a session reset. Disarming for
-inspection or touch-and-go pauses the accumulated flight and high-throttle times.
-Rearming the same connected pack resumes the same record and cannot increment
-its counter twice. The optional airborne gate also pauses rather than clears it.
-RF history continues across these motor pauses; its elapsed axis includes them.
+Disarming or turning the airborne gate OFF pauses qualifying time. Rearming
+the same connected pack resumes its record; it can count only once.
+RF history continues through those pauses, while the flight-time figure pauses.
 
-Only continuously missing, invalid or non-positive pack voltage for **Pack loss
-delay** ends that session. The default is 10 s (adjustable 3-120 s).
-Returning voltage before the timeout cancels the loss timer. Ordinary positive
-voltage sag is not a reset.
-A prolonged RF/telemetry loss can resemble disconnecting the pack, while a swap
-shorter than the delay may be missed. Use a longer delay, e.g. 30 s, when appropriate.
+Only continuous pack-voltage loss for **Pack loss delay** completes a session.
+Returning voltage before the delay expires resumes it. Positive voltage sag
+does not end it. A long telemetry outage can resemble disconnecting the pack;
+a swap shorter than the delay can be missed.
 
-The last qualified flight stays visible after the aircraft is switched off.
-While the next flight qualifies, the log is labelled **LAST FLIGHT LOG** and
-still shows the previous statistics/graphs. Only successful new qualification
-replaces it. A failed candidate does not erase the last qualified record.
-Radio restart clears the last-flight statistics and graphs. Resetting the flight
-counter requires logging enabled, motor disarmed and the pack session ended
-after disconnect.
+The last qualified log remains visible after model shutdown and while a new
+flight qualifies. A failed candidate does not replace it. Flight counts are
+saved per model; last-flight statistics and graphs clear on radio restart.
 
 ### Automatic flight-log view
 
-In **Flight log**, enable **Auto-open log** (default Off) and set **Extra log
-delay** (default 5 s, range 0-120 s). This is additional time after **Pack loss
-delay**, not a replacement for it. With 10 s + 5 s, the log opens about 15 s
-after continuous loss of valid pack voltage. Zero extra delay opens it when
-the qualified session ends.
+With **Pack loss delay = 10 s** and **Extra log delay = 5 s**, the log opens
+about 15 s after continuous pack-voltage loss. Only a newly completed qualified
+session triggers it. Returning voltage, changing model, disabling logging or
+auto-open, preview, configuration or a manual view change cancels a pending
+switch. It opens once for that flight, inside VoltDeck's current widget area.
 
-Only a newly completed qualified flight triggers the change. Missing telemetry
-at startup, short outages and rejected bench candidates do not. Returning valid
-pack voltage, changing model, disabling logging/auto-open, preview, opening
-configuration or manually choosing a view cancels a pending change. It happens
-once per completed flight; returning to Dashboard will not reopen the same log.
-This changes the view inside VoltDeck, not the radio's active main page.
+### Flight diagnostics
+
+The widget-menu action shows live raw/normalized throttle, endpoints, ARM,
+airborne gate, pack voltage and progress toward both time requirements.
+Read its status banner together with the individual gates. **LOG DISABLED**
+means logging is Off even if the other gates pass. Diagnostics do not change
+the radio's safety functions. Keep the motor safely disabled while checking
+control endpoints.
+
+![Flight diagnostics with no airborne source selected](images/flight-diagnostics.png)
+
+![Flight diagnostics with Always on selected](images/flight-diagnostics-always-on.png)
+
+## 9. Preview
+
+**Preview** supplies example readings for exploring the layout. It does not
+count flights, play alerts or change live consumption guards and peaks.
+Turn it Off before checking your model's telemetry or accepting a counter.
+
+Preview retains an accepted pack while real telemetry continues. Actual loss of
+pack voltage lasting **Pack loss delay** during Preview requires a new check
+when you return to live readings.
+
+## Widget actions
+
+| Menu action | Result |
+|---|---|
+| Configure widget | Opens the setup groups above. |
+| Flight log / Dashboard | Switches between the dashboard and flight log. |
+| Flight diagnostics | Opens qualification status and live control readings. |
+| Reset live peaks | Clears the dashboard's RPM and Watts session peaks. It does not reset the flight count or the recorded flight's maxima. |
+| Accept battery counter... | Reviews [the pack check](#check-before-showing-remaining-charge) for **Consumed mAh**, or a reset of the optional remaining-mAh counter with another method. Check actual charge and the sensor before confirming. It cannot bypass a difference above 20 points or **CHECK CELLS/TYPE** in the pack check. Acceptance does not restore missing consumption, reset the sensor, fill the battery or change the flight count. |
+
+## Display examples
+
+### RPM, Watts and average cell voltage
+
+<table>
+<tr>
+<td><img src="images/rpm-lcd.png" alt="Retro LCD measured RPM"><br><b>RPM / Retro LCD</b><br>Measured RPM, Manual scale, RPM max 12000.</td>
+<td><img src="images/rpm-watts-lcd.png" alt="RPM and electrical Watts"><br><b>RPM + Watts / Retro LCD</b><br>Watt max 1600 W.</td>
+</tr>
+<tr>
+<td><img src="images/rpm-watts-cell-lcd.png" alt="RPM Watts and average cell voltage"><br><b>RPM + W + cell / Retro LCD</b></td>
+<td><img src="images/rpm-numeric.png" alt="Numeric RPM"><br><b>RPM / Numeric</b></td>
+</tr>
+<tr>
+<td><img src="images/watts-lcd.png" alt="Standalone Watts"><br><b>Watts / Retro LCD</b></td>
+<td><img src="images/cell-volts-numeric.png" alt="Average cell voltage with a custom background"><br><b>Cell volts / Numeric</b><br>Custom background; mAh display Remaining.</td>
+</tr>
+</table>
+
+22.8 V × 38.6 A gives about **880 W** electrical input power.
+21.8 V ÷ 6 cells gives **3.63 V** average cell voltage.
+Missing voltage/current gives dashes rather than invented power.
+
+### Custom telemetry and KV estimate
+
+![Custom temperature meter](images/custom-temperature-lcd.png)
+
+Choose **Custom**, a temperature source, label **ESC TEMPERATURE**, range
+0–100 and decimals 0. The source supplies the actual temperature unit.
+
+![KV-based estimated RPM](images/kv-estimate-lcd.png)
+
+This example uses **RPM / Retro LCD**, **KV x volts (est.)**, 420 KV,
+an illustrative 85% factor and **Full-pack KV**. At 22.8 V it shows
+420 × 22.8 × 0.85 ≈ **8140 rpm**. For 6S Lipo the fixed scale is
+420 × 6 × 4.20 = 10584, rounded up to **11000 rpm**.
+85% is an example, not a general propeller-load correction.
+
+### Battery colors
+
+| Remaining charge | Color |
+|---|---|
+| More than 40% | Green |
+| More than 35%, up to 40% | Yellow |
+| More than 30%, up to 35% | Orange |
+| 30% or below | Red |
+
+<table>
+<tr>
+<td><img src="images/battery-yellow-40.png" alt="40 percent battery"><br><b>40%: yellow</b></td>
+<td><img src="images/battery-orange-35.png" alt="35 percent battery"><br><b>35%: orange</b></td>
+</tr>
+</table>
+
+![30 percent battery and low-battery indication](images/battery-red-30.png)
+
+### VFR graphs instead of RSSI
+
+![Flight log with VFR graphs](images/flight-log-vfr.png)
+
+Dashboard **RF1/RF2 source** can show RSSI in dB while **RF graph 1/2**
+shows VFR in %. They are separate measurements. Choose graph sources before
+flying: each session retains its initial sources, names and units.
+Visual profiles remain adjustable. Missing data leaves gaps; brief low readings
+remain visible. The live graph may lag by a few seconds.
+
+![Inactive RF sources retain their names and units](images/rf-inactive-units.png)
+
+![Flight log with RSSI graphs](images/flight-log-rssi.png)
+
+The RSSI example uses **ACCST**, with 45/42 dB visual thresholds.
+Its summary separates measured RPM from KV potential and shows flight duration,
+maximum current/Watts, pack low/high and the model's flight count.
 
 ### Illustrated pack-session transitions
 
 | Motor disarmed, same pack | Pack disconnected past the delay |
 |---|---|
 | ![Qualified session paused](images/flight-paused.png) | ![Last qualified log retained](images/flight-last-retained.png) |
-| Count 1 and the existing statistics remain. | LAST FLIGHT LOG remains available with count 1. |
+| Count 1 and the existing record remain. | LAST FLIGHT LOG remains with count 1. |
 
 | Next candidate is qualifying | Next candidate has qualified |
 |---|---|
-| ![Previous log while next flight qualifies](images/flight-next-qualifying.png) | ![New qualified flight replaces previous log](images/flight-next-qualified.png) |
-| Previous flight statistics remain; count is still 1. | Count becomes 2; only now does the new record replace it. |
+| ![Previous log during new qualification](images/flight-next-qualifying.png) | ![New qualified flight](images/flight-next-qualified.png) |
+| Previous record remains; count is still 1. | Count becomes 2; the new record replaces it. |
 
-### Flight diagnostics
-
-Choose **Flight diagnostics** in the widget menu. It shows actual throttle
-raw value, normalized 0-100% throttle, calibration endpoints, arm and
-optional airborne gates, valid pack voltage and qualification progress.
-The status banner identifies blocking conditions, paused sessions, continuous
-pack-loss progress and a completed session whose last log has been retained.
-
-An unselected arm source blocks logging. **Airborne gate = ---** passes.
-**Always on** also passes; a selected physical/logic condition must be ON.
-These choices do not bypass arm, voltage or time/throttle requirements.
-Read the current status banner together with the individual gates.
-**LOG DISABLED** means logging is Off; a passing airborne gate alone does not
-qualify a flight. Diagnostics do not change sources, settings or native safety
-functions. Mid-stick means 50% normalized throttle
-even when the channel monitor shows 0%. Keep the motor safely disabled when
-checking endpoints, and disable logging for bench tests that should not count.
-
-![Flight diagnostics with the airborne gate unselected](images/flight-diagnostics.png)
-
-![Flight diagnostics with Always on selected](images/flight-diagnostics-always-on.png)
-
-The flight count is saved for each model.
-
-## 13. Per-model settings and pictures
-
-Settings and source assignments are saved for each model. Back up the SD card
-and ETHOS model together. Check all sources and battery settings if you copy
-a model.
-
-Use **Image source = Selected model** to avoid choosing a second file.
-The model's selected image is reused when available.
-
-The example [Ultimate AMR artwork](images/ultimate-amr.png) is **290 x 191**
-pixels and matches the widget's image area. **480 x 272** and **480 x 320**
-images are also supported and resized to fit. **800 x 480** is not accepted.
-
-For this widget use ordinary **8-bit RGB or RGBA PNG**, not indexed/palette
-or 16-bit-channel PNG. Transparency is useful with black, custom and themed
-backgrounds. The artwork is documentation-only; see [NOTICE](../NOTICE.md).
-
-## 14. Before using VoltDeck
-
-1. Back up the SD card and the native model configuration.
-2. Confirm sensor units and fresh consumption values with a known pack.
-3. Check battery colors, selected WAV and repetition on the actual radio.
-4. Compare measured RPM/current against the equipment's own telemetry.
-5. Check the chosen throttle range and arm/airborne gates.
-6. Perform safe bench checks before any flight and keep native alarms/failsafe.
+Before flying, check the selected sources, capacity, cell count, consumption
+reset, audio and control gates for this model. Keep backups of the model and
+SD-card settings, and retain the radio's own alarms and failsafe.

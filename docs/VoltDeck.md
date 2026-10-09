@@ -21,8 +21,8 @@ See the [illustrated configuration guide](Configuration.md) or the
 
 ## Installation
 
-Download [VoltDeck-2026.10-v5.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v5/VoltDeck-2026.10-v5.zip) from the
-[release assets](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v5). Use the named widget package,
+Download [VoltDeck-2026.10-v6.zip](https://github.com/bliatun-code/VoltDeck/releases/download/voltdeck-2026.10-v6/VoltDeck-2026.10-v6.zip) from the
+[release assets](https://github.com/bliatun-code/VoltDeck/releases/tag/voltdeck-2026.10-v6). Use the named widget package,
 not the automatically generated repository source archive. Extract its
 `scripts/VoltDeck` folder onto the SD card, preserving this structure:
 
@@ -44,19 +44,32 @@ Use consumed mAh and enter the actual battery capacity:
 remaining percent = 100 * (capacity - consumed mAh) / capacity
 ```
 
-The displayed result is limited to 0 through 100 percent.
+The displayed result is limited to 0 through 100 percent. With **Consumed mAh**,
+VoltDeck first checks the counter against a stable, low-current voltage reference.
+Until the pack is checked, remaining charge shows **--**. Differences above
+10 and no more than 20 percentage points require explicit confirmation; larger
+differences stay blocked. See [the illustrated pack check](Configuration.md#check-before-showing-remaining-charge)
+for its measurement conditions and the LiFe confirmation.
 Reset the consumption counter when connecting a new or recharged battery.
 An incorrect pack capacity or a counter left over from a previous pack
 makes this percentage incorrect.
 
-If the consumption reading unexpectedly falls, VoltDeck shows remaining
-charge as unknown. Check the battery and the reading, exit preview and disarm
-the motor. **Accept battery counter...** lets VoltDeck use that reading again;
-it does not reset the sensor.
+With **Consumed mAh**, acceptance lasts for the battery connection; voltage sag
+during flight does not repeat the comparison. A long pack-telemetry loss or a radio restart requires
+a new check. If consumption unexpectedly falls, remaining charge becomes unknown
+and explicit counter acceptance is required after checking the battery and reading.
+**Accept battery counter...** reviews the current check; it does not reset the sensor.
+
+Check that the pack is fully charged before every flight. Compare reported
+consumption with charger refill over several flights and follow any supported
+ESC calibration procedure. A passed check does not guarantee a landing reserve.
 
 A percent telemetry source or an approximate voltage estimate can be
 selected instead. Voltage under load is not a direct measurement of
 remaining battery charge. Missing readings are shown as dashes.
+The optional remaining-mAh display retains its own counter-reset guard with
+either method; accepting it requires a valid ARM OFF indication and does not
+change the main percentage. See the configuration guide for the readings required.
 
 ## RPM, power and cell voltage
 

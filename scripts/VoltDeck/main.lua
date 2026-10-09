@@ -4,7 +4,7 @@
 -- Configure one full-screen zone in Ethos. Scalar settings are saved per model.
 -- Artwork is drawn natively. Model images and optional alert audio are user-selected.
 
-local VERSION = "2026.10-v5"
+local VERSION = "2026.10-v6"
 local MAX_IMAGE_PIXELS = 160000
 local BITMAP_RESERVE = 65536
 local FLIGHT_SESSION
@@ -18,6 +18,17 @@ local VALUE_FONTS = {FONT_XXL, FONT_XL, FONT_L_BOLD, FONT_L, FONT_M_BOLD or FONT
 local SMALL_FONTS = {FONT_S, FONT_XS}
 local SURFACE_HEIGHT = 480
 local LOW_BATTERY_PERCENT = 30
+local PACK_CHECK_MAX_CURRENT = 0.5
+local PACK_CHECK_SECONDS = 10
+local PACK_CHECK_RELAX_SECONDS = 60
+local PACK_CHECK_STABILITY_MV = 10
+local PACK_CHECK_AUTO_BP = 1000
+local PACK_CHECK_MANUAL_BP = 2000
+-- STC3115 default 4.20/4.35 V reference points, not a universal state of charge.
+-- Published data: github.com/st-sw/STC3115GenericDriver/Docs/Config/.
+local PACK_OCV_SOC = {0, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 65, 70, 80, 90, 100}
+local PACK_OCV_420 = {3300, 3541, 3618, 3658, 3695, 3721, 3747, 3761, 3778, 3802, 3863, 3899, 3929, 3991, 4076, 4176}
+local PACK_OCV_435 = {3300, 3571, 3651, 3675, 3710, 3743, 3761, 3770, 3790, 3825, 3914, 3953, 3990, 4088, 4197, 4313}
 local COLORS = {
     black = lcd.RGB(0, 0, 0),
     white = lcd.RGB(244, 247, 251),
@@ -31,10 +42,10 @@ local COLORS = {
     track = lcd.RGB(112, 127, 144, 0.14),
 }
 local TYPES = {
-    {name = "Lipo", full = 4.20, empty = 3.30},
-    {name = "HV Lipo", full = 4.35, empty = 3.40},
-    {name = "Li-ion", full = 4.20, empty = 3.00},
-    {name = "LiFe", full = 3.65, empty = 2.80},
+    {name = "Lipo", full = 4.20, empty = 3.30, cellMinimum = 3.27, checkCurve = PACK_OCV_420},
+    {name = "LiHV", full = 4.35, empty = 3.40, cellMinimum = 3.37, checkCurve = PACK_OCV_435},
+    {name = "Li-ion", full = 4.20, empty = 3.00, cellMinimum = 2.97, checkCurve = PACK_OCV_420},
+    {name = "LiFe", full = 3.65, empty = 2.80, cellMinimum = 2.77},
 }
 local SOURCE_FIELDS = {
     {key = "voltageSource", label = "Pack voltage", legacy = "voltageRef"},
@@ -59,7 +70,7 @@ local SETTINGS = {
     "highThrottleSeconds", "endDelay", "throttleMinimum", "throttleMaximum",
     "rfWarnDB", "rfCriticalDB", "rfWarnPercent", "rfCriticalPercent",
     "rf1Profile", "rf2Profile", "rf2WarnDB", "rf2CriticalDB", "rf2WarnPercent", "rf2CriticalPercent",
-    "autoLogEnabled", "autoLogDelay",
+    "autoLogEnabled", "autoLogDelay", "customPosition",
 }
 local SETTING_DEFS = {
     {"chemistry", 1, 1, #TYPES},
@@ -115,6 +126,10 @@ local SETTING_DEFS = {
     {"autoLogEnabled", false},
     {"autoLogDelay", 5, 0, 120},
 }
+-- Keep the complete previous scalar layout for a lossless VD5 import.
+local PREVIOUS_SETTING_DEFS = {}
+for index, definition in ipairs(SETTING_DEFS) do PREVIOUS_SETTING_DEFS[index] = definition end
+SETTING_DEFS[#SETTING_DEFS + 1] = {"customPosition", 3, 1, 3}
 local SETTING_MAP = {}
 for _, definition in ipairs(SETTING_DEFS) do SETTING_MAP[definition[1]] = definition end
 
@@ -476,8 +491,9 @@ local CONFIG_LIMIT = 4096
 local CONFIG_STATE
 
 local function configRecord(key, bytes)
+    local current = type(bytes) == "string" and bytes:match("^VD6|") ~= nil
     return DeckCore.decodeSettings(key, bytes, CONFIG_LIMIT, digest, identityHex, HEX_DECODE,
-        "VD5", SETTING_DEFS)
+        current and "VD6" or "VD5", current and SETTING_DEFS or PREVIOUS_SETTING_DEFS)
 end
 
 local function configLoad(key)
@@ -532,7 +548,7 @@ local function configSave(widget)
     if record and record.payload ~= widget.configPayload then return false, "Settings changed in another instance; reopen" end
     local sequence = (record and record.sequence or 0) + 1
     if sequence > 1000000000 then return false, "Settings generation limit reached" end
-    local body = "VD5|" .. identityHex(key) .. "|" .. sequence .. "\n" .. payload
+    local body = "VD6|" .. identityHex(key) .. "|" .. sequence .. "\n" .. payload
     local bytes = body .. "CHECK=" .. tostring(digest(body)) .. "\n"
     if #bytes > CONFIG_LIMIT then return false, "Settings file too large" end
     local path = base .. (sequence % 2 == 1 and "a.cfg" or "b.cfg")
@@ -614,7 +630,7 @@ local function read(widget)
         if key ~= "timerSource" or value ~= nil then widget[key] = restoreSource(value) end
     end
     local options = {
-        {"deckMode", 6, 1, 8},
+        {"deckMode", 6, 1, 8}, {"customPosition", 3, 1, 3},
         {"rpmMode", 1, 1, 2}, {"motorKV", 0, 0, 10000},
         {"loadFactor", 100, 10, 100}, {"rpmScale", 1, 1, 2},
         {"rpmMaximum", 12000, 1000, 200000}, {"wattMaximum", 2000, 10, 100000},
@@ -867,6 +883,179 @@ local function switchOn(source)
     if not ok then return false, nil end
     -- Generic state() is validity for some sources: valid does not imply ON.
     return value == true or (finite(value) and value > 0), value
+end
+
+local function armIsOff(source)
+    local selected, category = selectedSource(source)
+    if not selected or (CATEGORY_ALWAYS_ON ~= nil and category == CATEGORY_ALWAYS_ON) then return false end
+    local ok, active, raw = pcall(function() return selected:state(), selected:value() end)
+    if not ok or (active == false and category == CATEGORY_TELEMETRY_SENSOR) then return false end
+    return raw == false or (finite(raw) and raw <= 0)
+end
+
+local function clearPackCheckWindow(state)
+    state.idleSince, state.minimum, state.maximum = nil, nil, nil
+    state.ready, state.sample = false, nil
+end
+
+local function samePackSetup(widget, state, key)
+    return state and state.key == key and state.source == widget.consumptionSource
+        and state.voltageSource == widget.voltageSource and state.currentSource == widget.currentSource
+        and state.armSource == widget.armSource and state.capacity == widget.capacityMah
+        and state.cells == widget.cellCount and state.chemistry == widget.chemistry
+        and state.method == widget.batteryMethod and state.endDelay == widget.endDelay
+end
+local function samePackCheck(widget, state, generation)
+    return validPoll(widget) and widget.packCheckState == state and not widget.preview
+        and samePackSetup(widget, state, state.key) and widget.configGeneration == generation
+        and widget.batteryMethod == 1
+        and (widget.batteryStates and widget.batteryStates.Pack) == state.pack
+end
+
+local function packCheckCurrent(widget)
+    return math.min(PACK_CHECK_MAX_CURRENT, widget.capacityMah / 20000)
+end
+
+local function packReferenceBP(chemistry, cellMv)
+    local curve = chemistry.checkCurve
+    if not curve then return nil end
+    if cellMv <= curve[1] then return 0 end
+    for index = 2, #curve do
+        if cellMv <= curve[index] then
+            return round((PACK_OCV_SOC[index - 1] + (cellMv - curve[index - 1])
+                * (PACK_OCV_SOC[index] - PACK_OCV_SOC[index - 1])
+                / (curve[index] - curve[index - 1])) * 100)
+        end
+    end
+    return 10000
+end
+
+local function packDecision(widget, voltage, used)
+    local chemistry = TYPES[widget.chemistry]
+    local cellMv = round(voltage * 1000 / widget.cellCount)
+    local counterBP = round(clamp((widget.capacityMah - used) / widget.capacityMah, 0, 1) * 10000)
+    local referenceBP = packReferenceBP(chemistry, cellMv)
+    local deltaBP = referenceBP and counterBP - referenceBP or nil
+    local band = "manual"
+    if cellMv > round(chemistry.full * 1000) + 150 then band = "cells"
+    elseif deltaBP and math.abs(deltaBP) > PACK_CHECK_MANUAL_BP then band = "blocked"
+    elseif deltaBP and math.abs(deltaBP) <= PACK_CHECK_AUTO_BP then band = "auto" end
+    return {cellMv = cellMv, counterBP = counterBP, referenceBP = referenceBP,
+        deltaBP = deltaBP, band = band}
+end
+
+local function packDifference(decision)
+    return decision.deltaBP and math.ceil(math.abs(decision.deltaBP) / 10) / 10 or nil
+end
+
+local function samePackDecision(a, b)
+    return a and b and a.band == b.band and packDifference(a) == packDifference(b)
+        and round(a.counterBP / 10) == round(b.counterBP / 10)
+        and (a.referenceBP and round(a.referenceBP / 10))
+            == (b.referenceBP and round(b.referenceBP / 10))
+end
+
+local function packUnitsValid(state)
+    local ok, vu, cu = pcall(function()
+        return state.voltageSource:unit(), state.currentSource:unit()
+    end)
+    return ok and (vu == UNIT_VOLT or vu == UNIT_MILLIVOLT)
+        and (cu == UNIT_AMPERE or cu == UNIT_MILLIAMPERE)
+end
+
+local function packArmIdle(source)
+    local selected, category = selectedSource(source)
+    -- Always ON qualifies the flight log, but is not a physical ARM indication.
+    return not selected or (CATEGORY_ALWAYS_ON ~= nil and category == CATEGORY_ALWAYS_ON)
+        or armIsOff(selected)
+end
+
+-- Qualify one battery episode, then use its monotonic counter during flight.
+-- No voltage/percentage comparison is made after qualification. A reset, long
+-- telemetry gap or battery setup change starts a fresh low-load check.
+local function checkBatteryCounter(widget, data, used, clock, key, newPack)
+    local pack = widget.batteryStates and widget.batteryStates.Pack
+    local state, generation = widget.packCheckState, widget.configGeneration
+    local sameSetup = samePackSetup(widget, state, key)
+    local expired = state and state.lossSince and data.voltage ~= nil
+        and clock - state.lossSince >= widget.endDelay
+    local clockChanged = state and state.lastClock and (clock < state.lastClock
+        or clock - state.lastClock >= widget.endDelay)
+    if not sameSetup or newPack or state.pack ~= pack or state.recheck or expired or clockChanged then
+        local holdUntil = sameSetup and state.holdUntil or nil
+        if state and state.lastClock and clock < state.lastClock and holdUntil then
+            holdUntil = clock + PACK_CHECK_RELAX_SECONDS
+        end
+        state = {pack = pack, key = key, source = widget.consumptionSource,
+            voltageSource = widget.voltageSource, currentSource = widget.currentSource,
+            armSource = widget.armSource, capacity = widget.capacityMah,
+            cells = widget.cellCount, chemistry = widget.chemistry, holdUntil = holdUntil,
+            method = widget.batteryMethod, endDelay = widget.endDelay}
+        widget.packCheckState = state
+    end
+    if state.lastClock and clock - state.lastClock > 1 then clearPackCheckWindow(state) end
+    state.lastClock = clock
+    if widget.batteryMethod ~= 1 then clearPackCheckWindow(state); return used end
+    if data.current ~= nil and data.current > packCheckCurrent(widget) then
+        state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
+    end
+    if data.voltage == nil then
+        state.lossSince = state.lossSince or clock
+        if clock - state.lossSince >= widget.endDelay then state.qualified = nil end
+        clearPackCheckWindow(state)
+        data.packCheckPending = true
+        return nil
+    end
+    state.lossSince = nil
+    if pack and pack.uncertain and not state.requiresCounterAcceptance then
+        state.qualified, state.requiresCounterAcceptance, state.problem = nil, true, nil
+        clearPackCheckWindow(state)
+    end
+    local unitsOK = packUnitsValid(state)
+    if not samePackCheck(widget, state, generation) then
+        if validWidget(widget) then widget.nextPoll = 0 end
+        return nil
+    end
+    if not unitsOK or not key or data.used == nil then
+        clearPackCheckWindow(state); data.packCheckPending = true; return nil
+    end
+    if state.qualified then return used end
+    data.packCheckPending = true
+    if data.current == nil or data.current < 0 or data.current > packCheckCurrent(widget) then
+        clearPackCheckWindow(state); return nil
+    end
+    local idleArm = packArmIdle(state.armSource)
+    if not samePackCheck(widget, state, generation) then
+        if validWidget(widget) then widget.nextPoll = 0 end
+        return nil
+    end
+    if not idleArm then
+        state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
+        clearPackCheckWindow(state); return nil
+    end
+    if state.holdUntil and clock < state.holdUntil then clearPackCheckWindow(state); return nil end
+    local decision = packDecision(widget, data.voltage, data.used)
+    if not state.idleSince or state.candidate ~= decision.band
+        or math.max(state.maximum or decision.cellMv, decision.cellMv)
+            - math.min(state.minimum or decision.cellMv, decision.cellMv) > PACK_CHECK_STABILITY_MV then
+        state.idleSince, state.minimum, state.maximum, state.candidate = clock,
+            decision.cellMv, decision.cellMv, decision.band
+        state.ready, state.sample, state.problem = false, nil, nil
+    else
+        state.minimum, state.maximum = math.min(state.minimum, decision.cellMv),
+            math.max(state.maximum, decision.cellMv)
+    end
+    if clock - state.idleSince >= PACK_CHECK_SECONDS then
+        state.ready, state.sample = true, decision
+        if decision.band == "auto" and not state.requiresCounterAcceptance then
+            state.qualified, state.problem, data.packCheckPending = true, nil, nil
+            return used
+        end
+        state.problem = decision.band == "cells" and "cells"
+            or (decision.referenceBP == nil and "profile" or "counter")
+        data.packCheck, data.packCheckPending = state.problem, nil
+    end
+    return nil
 end
 
 local function throttlePercent(widget)
@@ -1286,6 +1475,11 @@ end
 local function wakeup(widget)
     if not validWidget(widget) then return end
     local clock = os.clock()
+    if widget.focusRepaintAt and clock >= widget.focusRepaintAt then
+        widget.focusRepaintAt = nil
+        lcd.invalidate()
+        if not validWidget(widget) then return end
+    end
     if clock < widget.nextPoll then return end
     widget.nextPoll = clock + 0.25
     updateResources(widget)
@@ -1303,6 +1497,7 @@ local function wakeup(widget)
     if widget.peakModelKey ~= key then
         widget.peakModelKey, widget.peakRPM, widget.peakWatts = key, nil, nil
         widget.alertStates, widget.audioUntil, widget.metadata, widget.batteryStates = nil, nil, nil, nil
+        widget.packCheckState = nil
     end
     local readings = {
         voltage = sample(widget.voltageSource, "voltage"),
@@ -1321,6 +1516,7 @@ local function wakeup(widget)
     if not validPoll(widget) then return end
     data.rssi2Name, data.rssi2Unit = DeckCore.metadata(widget, "RF2", widget.rssi2Source, clock, "RF2", "", true)
     if not validPoll(widget) then return end
+    local liveVoltage, liveCurrent = data.voltage, data.current
     if widget.preview then
         data.voltage, data.current, data.used = 22.8, 18.2, 650
         data.rssi1, data.rssi2, data.rx1, data.tx = 86, 83, 7.4, 8.0
@@ -1332,9 +1528,38 @@ local function wakeup(widget)
     if data.rx2 ~= nil and data.rx2 <= 0 then data.rx2 = nil end
     local trustedUsed = data.used
     if not widget.preview then
+        local previousPack = widget.batteryStates and widget.batteryStates.Pack
+        if previousPack and previousPack.lossSince and data.voltage ~= nil
+            and clock - previousPack.lossSince >= widget.endDelay then previousPack.newPack = true end
+        local newPack = previousPack and previousPack.newPack and data.voltage ~= nil
         trustedUsed, data.counterReset = DeckCore.batteryUsed(widget, "Pack", widget.consumptionSource,
             widget.voltageSource, data.voltage, data.used, widget.capacityMah, clock, key)
         if not validPoll(widget) then return end
+        trustedUsed = checkBatteryCounter(widget, data, trustedUsed, clock, key, newPack)
+        if not validPoll(widget) then return end
+    elseif widget.packCheckState then
+        local state, pack = widget.packCheckState, widget.batteryStates and widget.batteryStates.Pack
+        clearPackCheckWindow(state)
+        if state.lastClock and (clock < state.lastClock or clock - state.lastClock >= widget.endDelay) then
+            state.qualified, state.recheck = nil, true
+            if clock < state.lastClock and state.holdUntil then
+                state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
+            end
+        end
+        state.lastClock = clock
+        -- Demo values never qualify a pack; an observed live disconnect still
+        -- marks a possible battery change, including reconnection during demo.
+        if liveVoltage == nil or liveVoltage <= 0 then
+            state.lossSince = state.lossSince or clock
+        end
+        if state.lossSince and clock - state.lossSince >= widget.endDelay then
+            state.qualified = nil
+            if pack then pack.newPack = true end
+        end
+        if liveVoltage ~= nil and liveVoltage > 0 then state.lossSince = nil end
+        if liveCurrent ~= nil and liveCurrent > packCheckCurrent(widget) then
+            state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
+        end
     end
     if trustedUsed ~= nil then data.remaining = math.max(0, widget.capacityMah - trustedUsed) end
     data.voltagePercent = voltagePercent(widget, data.voltage)
@@ -1372,7 +1597,7 @@ local function wakeup(widget)
     data.graph2 = sample(graphSource2, "signal")
     if not validPoll(widget) then return end
     if widget.preview then
-        data.rpm, data.rpmDisplay, data.watts, data.cellVoltage = 8300, 8300, 414.96, 3.8
+        data.rpm, data.rpmDisplay, data.watts = 8300, 8300, 414.96
         data.peakRPM, data.peakWatts = 8300, 414.96
     end
     updateFlight(widget, data, clock, key)
@@ -1403,6 +1628,17 @@ local function wakeup(widget)
     widget.scratch, widget.data, widget.refresh = widget.data, data, false
     alarm(widget, data, clock)
     if dirty then lcd.invalidate() end
+    local pending = widget.pendingBatteryMessage
+    if pending then
+        widget.pendingBatteryMessage = nil
+        local currentKey = modelKey()
+        if validPoll(widget) and not widget.preview and currentKey == pending.key
+            and widget.configGeneration == pending.generation
+            and widget.packCheckState == pending.check then
+            form.openDialog({title = "Battery not accepted", message = pending.message,
+                buttons = {{label = "Close", action = function() return true end}}})
+        end
+    end
 end
 
 -- Percentage thresholds are shared by the battery colors and the 30% audio alert.
@@ -1413,6 +1649,20 @@ local function batteryColor(percent)
     if percent <= 35 then return COLORS.orange end
     if percent <= 40 then return COLORS.yellow end
     return COLORS.green
+end
+
+local function voltageMetricColor(widget, kind, fallback)
+    if kind ~= 4 and kind ~= 5 then return fallback end
+    local cell = widget.data.cellVoltage
+    if cell == nil then return COLORS.muted end
+    local chemistry = TYPES[widget.chemistry]
+    -- Ignore only arithmetic noise from Pack / Cells at an exact boundary.
+    local cellMv, fullMv, emptyMv = cell * 1000, chemistry.full * 1000, chemistry.empty * 1000
+    -- Ignore arithmetic noise near a boundary; 0.01 mV is far below display resolution.
+    local toleranceMv = 0.01
+    if cellMv > fullMv + toleranceMv then return COLORS.red end
+    if kind == 5 then return batteryColor(widget.data.voltagePercent and round(widget.data.voltagePercent)) end
+    return batteryColor((cellMv - emptyMv - toleranceMv) * 100 / (fullMv - emptyMv))
 end
 
 local function rect(x, y, w, h, color)
@@ -1511,12 +1761,32 @@ local function metricValues(widget, kind)
         widget.rpmMode == 2 and "RPM ESTIMATE" or "MOTOR RPM", "rpm",
         0, data.rpmCeiling or widget.rpmMaximum, 0, data.peakRPM end
     if kind == 3 then return data.watts, "PACK POWER", "W", 0, widget.wattMaximum, 0, data.peakWatts end
-    if kind == 4 then return data.cellVoltage, "CELL VOLTAGE (AVG)", "V", 0, widget.cellMaximum / 100, 2 end
+    if kind == 4 then
+        local chemistry = TYPES[widget.chemistry]
+        return data.cellVoltage, "CELL VOLTAGE (AVG)", "V", chemistry.cellMinimum, chemistry.full, 2
+    end
     return data.voltagePercent, "VOLTAGE ESTIMATE", "%", 0, 100, 0
 end
 local DECK_METRICS = {{1}, {2}, {3}, {4}, {5}, {2, 3}, {2, 3, 4}, {}}
+local function resolvedDeckKinds(widget)
+    if not validWidget(widget) then return {} end
+    local mode = widget.deckMode
+    if mode == 8 then return {} end
+    if mode == 1 then return {1} end
+    local kinds = {}
+    for index, kind in ipairs(DECK_METRICS[mode] or DECK_METRICS[6]) do kinds[index] = kind end
+    local custom = selectedSource(widget.bottomSource)
+    if not validWidget(widget) then return {} end
+    if custom then
+        if #kinds == 3 then table.remove(kinds) end
+        table.insert(kinds, clamp(widget.customPosition or 3, 1, #kinds + 1), 1)
+    end
+    return kinds
+end
+
 local function drawMeter(widget, colors, sx, sy, kind)
     local reading, label, unit, minimumValue, maximumValue, decimals = metricValues(widget, kind)
+    local valueColor = voltageMetricColor(widget, kind, colors.foreground)
     local x, y, w = 24 * sx, 347 * sy, 290 * sx
     text(x, y, string.upper(label or "TELEMETRY"), w, 18 * sy,
         colors.secondary, LEFT, nil, true)
@@ -1524,15 +1794,15 @@ local function drawMeter(widget, colors, sx, sy, kind)
     local unit = unit or ""
     if widget.bottomDisplay == 1 then
         local tw, th = text(x, y + 28 * sy, value, w - 60 * sx, 56 * sy,
-            colors.foreground, LEFT, widget.valueFont)
+            valueColor, LEFT, widget.valueFont)
         text(x + tw + 8 * sx, y + 28 * sy + math.max(0, th - 22 * sy),
             unit, math.max(30 * sx, w - tw - 8 * sx), 24 * sy, colors.secondary, LEFT, nil, true)
         return
     end
     text(x + w, y + 20 * sy, value .. (unit ~= "" and " " .. unit or ""),
-        w, 39 * sy, colors.foreground, RIGHT, widget.valueFont)
+        w, 39 * sy, valueColor, RIGHT, widget.valueFont)
     local ratio = reading and clamp((reading - minimumValue)
-        / math.max(1, maximumValue - minimumValue), 0, 1) or 0
+        / math.max(0.01, maximumValue - minimumValue), 0, 1) or 0
     local count, gap = 28, 3 * sx
     local width = (w - (count - 1) * gap) / count
     for index = 1, count do
@@ -1542,7 +1812,8 @@ local function drawMeter(widget, colors, sx, sy, kind)
         local color = colors.track
         if reading ~= nil and index <= math.ceil(ratio * count) then
             local zone = index / count * 100
-            if zone >= widget.redZone then color = COLORS.red
+            if kind == 4 or kind == 5 then color = valueColor
+            elseif zone >= widget.redZone then color = COLORS.red
             elseif zone >= widget.redZone - 10 then color = COLORS.orange
             elseif zone >= widget.redZone - 20 then color = COLORS.yellow
             else color = colors.accent end
@@ -1559,7 +1830,7 @@ local function drawMeter(widget, colors, sx, sy, kind)
     for index = 0, 4 do
         local amount = minimumValue + (maximumValue - minimumValue) * index / 4
         local label = math.abs(amount) >= 1000 and string.format("%.1fk", amount / 1000)
-            or string.format(maximumValue - minimumValue < 10 and "%.1f" or "%.0f", amount)
+            or string.format(kind == 4 and "%.2f" or (maximumValue - minimumValue < 10 and "%.1f" or "%.0f"), amount)
         local align = index == 0 and LEFT or (index == 4 and RIGHT or CENTERED)
         text(x + w * index / 4, 462 * sy, label, 65 * sx, 14 * sy,
             colors.secondary, align, nil, true)
@@ -1568,7 +1839,7 @@ end
 
 
 local function drawBottom(widget, colors, sx, sy)
-    local kinds = DECK_METRICS[widget.deckMode] or DECK_METRICS[6]
+    local kinds = resolvedDeckKinds(widget)
     local count = #kinds
     if count == 0 then return end
     if count == 1 then
@@ -1581,12 +1852,13 @@ local function drawBottom(widget, colors, sx, sy)
     local height = 126 / count
     for index, kind in ipairs(kinds) do
         local value, label, unit, minimumValue, maximumValue, decimals, peak = metricValues(widget, kind)
+        local valueColor = voltageMetricColor(widget, kind, colors.foreground)
         local x, y, width = 24 * sx, (347 + (index - 1) * height) * sy, 290 * sx
         text(x, y, label, 182 * sx, 14 * sy, colors.secondary, LEFT, nil, true)
         if peak then text(x + width, y, "MAX " .. valueText(peak, 0), 104 * sx,
             14 * sy, colors.accent, RIGHT, nil, true) end
         text(x + width, y + 15 * sy, valueText(value, decimals) .. " " .. unit,
-            width, (count == 3 and 22 or 28) * sy, colors.foreground, RIGHT, widget.valueFont)
+            width, (count == 3 and 22 or 28) * sy, valueColor, RIGHT, widget.valueFont)
         if widget.bottomDisplay == 2 then
             local ratio = value and clamp((value - minimumValue) / math.max(0.01, maximumValue - minimumValue), 0, 1) or 0
             local gap, segments = 2 * sx, 24
@@ -1594,7 +1866,8 @@ local function drawBottom(widget, colors, sx, sy)
             for segment = 1, segments do
                 local tone = colors.track
                 if value ~= nil and segment <= math.ceil(ratio * segments) then
-                    tone = segment / segments * 100 >= widget.redZone and COLORS.red or colors.accent
+                    if kind == 4 or kind == 5 then tone = valueColor
+                    else tone = segment / segments * 100 >= widget.redZone and COLORS.red or colors.accent end
                 end
                 rect(x + (segment - 1) * (segmentWidth + gap), y + (height - 7) * sy,
                     segmentWidth, 4 * sy, tone)
@@ -1756,7 +2029,22 @@ local function paintDiagnostics(widget, colors, sx, sy)
         752 * sx, 14 * sy, colors.accent, LEFT, nil, true)
 end
 
+local function keepFocus(widget)
+    -- Home focus expires in ETHOS. Refresh only the visible widget's existing
+    -- focus; leave native short/long presses and other pages to ETHOS.
+    widget.focusRepaintAt = nil
+    if type(lcd.hasFocus) == "function" and type(lcd.resetFocusTimeout) == "function" then
+        local ok, focused = pcall(lcd.hasFocus)
+        if ok and focused == true then
+            local renewed = pcall(lcd.resetFocusTimeout)
+            if renewed and validWidget(widget) then widget.focusRepaintAt = os.clock() + 4 end
+        end
+    end
+end
+
 local function paint(widget)
+    if not validWidget(widget) then return end
+    keepFocus(widget)
     if not validWidget(widget) then return end
     local w, h = lcd.getWindowSize()
     if not finite(w) or not finite(h) or w <= 0 or h <= 0 then return end
@@ -1823,6 +2111,11 @@ local function paint(widget)
         colors.foreground, LEFT, widget.valueFont)
     if data.counterReset and widget.batteryMethod == 1 and not widget.preview then
         text(349 * sx, 409 * sy, "COUNTER RESET: CHECK PACK", 238 * sx, 18 * sy, COLORS.red, LEFT, nil, true)
+    elseif data.packCheck and not widget.preview then
+        text(349 * sx, 409 * sy, data.packCheck == "cells" and "CHECK CELLS/TYPE" or "CHECK PACK/COUNTER",
+            238 * sx, 18 * sy, COLORS.red, LEFT, nil, true)
+    elseif data.packCheckPending and not widget.preview then
+        text(349 * sx, 409 * sy, "CHECKING PACK", 238 * sx, 18 * sy, colors.secondary, LEFT, nil, true)
     elseif data.low and not widget.preview then
         rounded(349 * sx, 414 * sy, 5 * sx, 5 * sy, 2 * math.min(sx, sy), COLORS.orange)
         text(361 * sx, 409 * sy, "LOW BATTERY", 231 * sx, 18 * sy, COLORS.orange, LEFT, nil, true)
@@ -1838,13 +2131,17 @@ local function paint(widget)
     drawBottom(widget, colors, sx, sy)
 end
 
-local function numberField(widget, label, key, minimum, maximum, suffix, step)
+local function numberField(widget, label, key, minimum, maximum, suffix, step, onChanged, active)
+    local generation = widget.configGeneration
+    if not validWidget(widget) then return end
     local definition = SETTING_MAP[key]
     if definition and definition[3] then minimum, maximum = definition[3], definition[4] end
     local line = form.addLine(label, widget.configPanel)
+    if not validWidget(widget) or widget.configGeneration ~= generation then return end
     local field = form.addNumberField(line, nil, minimum, maximum,
         function() return widget[key] end,
-        function(value) if not validWidget(widget) then return end; widget[key] = value
+        function(value) if not validWidget(widget) or widget.configGeneration ~= generation
+                or (active and not active()) then return end; widget[key] = value
             if key == "bottomMinimum" then widget.bottomMaximum = math.max(value + 1, widget.bottomMaximum) end
             if key == "bottomMaximum" then widget.bottomMinimum = math.min(value - 1, widget.bottomMinimum) end
             if key == "signalMinimum" then widget.signalMaximum = math.max(value + 1, widget.signalMaximum) end
@@ -1864,46 +2161,180 @@ local function numberField(widget, label, key, minimum, maximum, suffix, step)
             if key == "rf2WarnDB" or key == "rf2CriticalDB" or key == "rf2WarnPercent"
                 or key == "rf2CriticalPercent" then widget.rf2Profile = 3 end
             changed(widget)
+            if onChanged and validWidget(widget) and widget.configGeneration == generation then onChanged() end
         end)
+    if not validWidget(widget) or widget.configGeneration ~= generation then return end
     if suffix then field:suffix(suffix) end
     if step then field:step(step) end
+    return field
 end
 
-local function choiceField(widget, label, key, choices)
+local function choiceField(widget, label, key, choices, onChanged, active)
+    local generation = widget.configGeneration
+    if not validWidget(widget) then return end
     local line = form.addLine(label, widget.configPanel)
-    form.addChoiceField(line, nil, choices,
+    if not validWidget(widget) or widget.configGeneration ~= generation then return end
+    return form.addChoiceField(line, nil, choices,
         function() return widget[key] end,
-        function(value) if not validWidget(widget) then return end; widget[key] = value
+        function(value) if not validWidget(widget) or widget.configGeneration ~= generation
+                or (active and not active()) then return end; widget[key] = value
             if key == "rpmMode" then widget.peakRPM = nil end
             changed(widget)
+            if onChanged and validWidget(widget) and widget.configGeneration == generation then onChanged() end
         end)
 end
 
-local function colorField(widget, label, key)
+local function colorField(widget, label, key, active)
+    local generation = widget.configGeneration
+    if not validWidget(widget) then return end
     local line = form.addLine(label, widget.configPanel)
-    form.addColorField(line, nil,
+    if not validWidget(widget) or widget.configGeneration ~= generation then return end
+    return form.addColorField(line, nil,
         function() return widget[key] end,
-        function(value) if not validWidget(widget) then return end; widget[key] = value; changed(widget) end)
+        function(value) if not validWidget(widget) or widget.configGeneration ~= generation
+                or (active and not active()) then return end; widget[key] = value; changed(widget) end)
 end
 
-local function acceptBatteryCounter(widget)
-    if not validWidget(widget) or widget.preview then return false, "Exit preview first." end
-    if not selectedSource(widget.armSource) or switchOn(widget.armSource) ~= false then
-        return false, "Select a valid ARM source and disarm before confirming."
+local function batterySetup(widget)
+    return {generation = widget.configGeneration, states = widget.batteryStates,
+        pack = widget.batteryStates and widget.batteryStates.Pack, check = widget.packCheckState,
+        lossSince = widget.batteryStates and widget.batteryStates.Pack and widget.batteryStates.Pack.lossSince,
+        newPack = widget.batteryStates and widget.batteryStates.Pack and widget.batteryStates.Pack.newPack,
+        source = widget.consumptionSource, voltageSource = widget.voltageSource,
+        currentSource = widget.currentSource, armSource = widget.armSource,
+        capacity = widget.capacityMah, cells = widget.cellCount, chemistry = widget.chemistry,
+        method = widget.batteryMethod, endDelay = widget.endDelay,
+        decision = widget.packCheckState and widget.packCheckState.sample}
+end
+local function sameBatterySetup(widget, setup)
+    return validWidget(widget) and not widget.preview and widget.configGeneration == setup.generation
+        and widget.batteryStates == setup.states and widget.packCheckState == setup.check
+        and (widget.batteryStates and widget.batteryStates.Pack) == setup.pack
+        and (not setup.pack or (setup.pack.lossSince == setup.lossSince and setup.pack.newPack == setup.newPack))
+        and widget.consumptionSource == setup.source and widget.voltageSource == setup.voltageSource
+        and widget.currentSource == setup.currentSource and widget.armSource == setup.armSource
+        and widget.capacityMah == setup.capacity and widget.cellCount == setup.cells
+        and widget.chemistry == setup.chemistry and widget.batteryMethod == setup.method
+        and widget.endDelay == setup.endDelay
+end
+local function acceptOtherCounter(widget, setup, key)
+    local off = armIsOff(setup.armSource)
+    local voltage = sample(setup.voltageSource, "voltage")
+    local used = sample(setup.source, "capacity")
+    local voltageSelected = selectedSource(setup.voltageSource)
+    local unitOK, voltageUnit = pcall(function() return voltageSelected and voltageSelected:unit() end)
+    local currentKey = modelKey()
+    if not sameBatterySetup(widget, setup) or currentKey ~= key then
+        return false, "Setup changed; reopen the menu.", true
     end
-    widget.batteryStates, widget.nextPoll, widget.refresh = nil, 0, true
+    if not setup.pack or not setup.pack.uncertain then return false, "No consumption-counter reset to accept." end
+    if not off then return false, "Select a valid ARM source and disarm before confirming." end
+    if used == nil or used < 0 or (voltageSelected and (voltage == nil or voltage <= 0)) then
+        return false, "Wait for valid pack voltage and consumed mAh."
+    end
+    if unitOK and (voltageUnit == UNIT_VOLT or voltageUnit == UNIT_MILLIVOLT)
+        and voltage ~= nil and round(voltage * 1000 / setup.cells) > round(TYPES[setup.chemistry].full * 1000) + 150 then
+        return false, "Check Cells and Battery type first."
+    end
+    -- Other methods retain their optional remaining-mAh counter reset guard;
+    -- their main percentage still comes from the selected method.
+    setup.pack.high, setup.pack.uncertain, setup.pack.lossSince, setup.pack.newPack = used, nil, nil, nil
+    widget.nextPoll, widget.refresh = 0, true
+    return true
+end
+local function acceptBatteryCounter(widget, setup, expectedKey)
+    if not validWidget(widget) or widget.preview then return false, "Exit preview first." end
+    setup = setup or batterySetup(widget)
+    local key = modelKey()
+    if not sameBatterySetup(widget, setup) or (expectedKey and key ~= expectedKey) then
+        return false, "Setup changed; reopen the menu.", true
+    end
+    if setup.method ~= 1 then return acceptOtherCounter(widget, setup, key) end
+    local voltage = sample(setup.voltageSource, "voltage")
+    local current = sample(setup.currentSource, "current")
+    local used = sample(setup.source, "capacity")
+    local unitsOK = setup.check and packUnitsValid(setup.check)
+    local idleArm = packArmIdle(setup.armSource)
+    local currentKey = modelKey()
+    if not sameBatterySetup(widget, setup) or currentKey ~= key then
+        return false, "Setup changed; reopen the menu.", true
+    end
+    local state, clock = setup.check, os.clock()
+    if setup.method ~= 1 or not setup.pack or not state then
+        return false, "Wait for a consumed-mAh battery check and reopen the menu."
+    end
+    if not unitsOK or used == nil or used < 0 or voltage == nil or voltage <= 0 or current == nil or current < 0 then
+        clearPackCheckWindow(state)
+        return false, "Wait for valid pack voltage, current and consumed mAh."
+    end
+    if current > packCheckCurrent(widget) or not idleArm then
+        state.holdUntil = clock + PACK_CHECK_RELAX_SECONDS
+        clearPackCheckWindow(state)
+        return false, "Disarm and let the battery settle at low current; then reopen the menu."
+    end
+    local decision = packDecision(widget, voltage, used)
+    if decision.band == "cells" then return false, "Check Cells and Battery type first." end
+    if decision.band == "blocked" then
+        return false, string.format("Difference %.1f pp exceeds 20 pp. Check battery charge, Cells / Battery type and consumed mAh.", packDifference(decision))
+    end
+    if state.qualified then return false, "Battery already checked." end
+    if not state.ready or not state.lastClock or clock < state.lastClock or clock - state.lastClock > 1
+        or (state.holdUntil and clock < state.holdUntil)
+        or math.max(state.maximum or decision.cellMv, decision.cellMv)
+            - math.min(state.minimum or decision.cellMv, decision.cellMv) > PACK_CHECK_STABILITY_MV then
+        clearPackCheckWindow(state)
+        return false, "Wait for a stable low-current check and reopen the menu."
+    end
+    if not samePackDecision(setup.decision, decision) then
+        clearPackCheckWindow(state)
+        return false, "Readings changed; wait for a new check and reopen the menu."
+    end
+    -- Explicit acceptance applies to this verified battery episode only.
+    setup.pack.high, setup.pack.uncertain, setup.pack.lossSince, setup.pack.newPack = used, nil, nil, nil
+    state.qualified, state.problem, state.requiresCounterAcceptance = true, nil, nil
+    widget.nextPoll, widget.refresh = 0, true
     return true
 end
 local function confirmBatteryCounter(widget)
     if not validWidget(widget) then return end
+    local setup = batterySetup(widget)
     local key = modelKey()
-    form.openDialog({title = "Accept battery counter?",
-        message = "Only after checking pack charge and the consumed-mAh reading. ARM must be OFF.",
+    if not sameBatterySetup(widget, setup) then return end
+    local state, decision, title, message = setup.check, setup.decision
+    if setup.method ~= 1 and setup.pack and setup.pack.uncertain then
+        message = "Check actual charge and consumed mAh before accepting this counter reset. ARM must be OFF. Acceptance affects the optional remaining-mAh reading; battery percentage still follows Remaining from."
+    elseif setup.method ~= 1 then
+        title, message = "Consumption counter", "No consumption-counter reset to accept. Battery percentage follows the selected Remaining from method."
+    elseif state and state.qualified then
+        title, message = "Battery already checked", "The current battery counter is accepted. A new battery episode will be checked again."
+    elseif decision and decision.band == "cells" then
+        title, message = "Check battery settings", "Pack voltage exceeds the selected Cells / Battery type. Correct the setup first."
+    elseif decision and decision.band == "blocked" then
+        title, message = "Check pack/counter", string.format("Counter %.1f%%; voltage reference %.1f%%. Difference %.1f pp exceeds 20 pp. Check charge, Cells / Battery type and consumed mAh.",
+            decision.counterBP / 100, decision.referenceBP / 100, packDifference(decision))
+    elseif not state or not state.ready or not decision then
+        title, message = "Checking battery", string.format("Wait for valid readings and 10 s of stable voltage at current at most %.3f A. Disarm first; after load, allow at least 60 s to settle.", packCheckCurrent(widget))
+    elseif not decision.referenceBP then
+        message = string.format("LiFe voltage cannot reliably check charge. Counter %.1f%%. Confirm only after checking actual battery charge, capacity and consumed mAh. Acceptance does not restore missing consumption.", decision.counterBP / 100)
+    else
+        message = string.format("Counter %.1f%%; voltage reference %.1f%%. Difference %.1f pp. Confirm only after checking actual battery charge, Cells / Battery type and consumed mAh. Acceptance does not restore missing consumption.",
+            decision.counterBP / 100, decision.referenceBP / 100, packDifference(decision))
+    end
+    if title then
+        form.openDialog({title = title, message = message,
+            buttons = {{label = "Close", action = function() return true end}}})
+        return
+    end
+    form.openDialog({title = "Accept battery counter?", message = message,
         buttons = {{label = "Cancel", action = function() return true end},
             {label = "Confirm", action = function()
-                if not validWidget(widget) or modelKey() ~= key then return true end
-                local ok, problem = acceptBatteryCounter(widget)
-                if not ok then print("VoltDeck: " .. problem); return false end
+                if not sameBatterySetup(widget, setup) then return true end
+                local ok, problem, stale = acceptBatteryCounter(widget, setup, key)
+                if not ok and not stale then
+                    widget.pendingBatteryMessage = {message = problem, key = key,
+                        generation = setup.generation, check = setup.check}
+                    widget.nextPoll, widget.refresh = 0, true
+                end
                 lcd.invalidate(); return true
             end}}})
 end
@@ -1912,168 +2343,224 @@ end
 
 local function configure(widget)
     if not validWidget(widget) then return end
+    widget.configGeneration = (widget.configGeneration or 0) + 1
+    widget.nextPoll = 0
+    local generation, bindings = widget.configGeneration, {}
+    local function currentForm()
+        return validWidget(widget) and widget.configGeneration == generation
+    end
+    local function bind(field, active)
+        if currentForm() and field and active then bindings[#bindings + 1] = {field = field, active = active} end
+        return field
+    end
+    local function refreshFields()
+        for _, binding in ipairs(bindings) do
+            if not currentForm() then return end
+            if type(binding.field.enable) == "function" then
+                local enabled = binding.active()
+                if not currentForm() then return end
+                binding.field:enable(enabled)
+            end
+        end
+    end
+    local function number(label, key, minimum, maximum, suffix, step, active)
+        if not currentForm() then return end
+        return bind(numberField(widget, label, key, minimum, maximum, suffix, step, refreshFields, active), active)
+    end
+    local function choice(label, key, choices, active)
+        if not currentForm() then return end
+        return bind(choiceField(widget, label, key, choices, refreshFields, active), active)
+    end
+    local function color(label, key, active)
+        if not currentForm() then return end
+        return bind(colorField(widget, label, key, active), active)
+    end
+    local function hasKind(wanted)
+        if not currentForm() then return false end
+        local kinds = resolvedDeckKinds(widget)
+        if not currentForm() then return false end
+        for _, kind in ipairs(kinds) do if kind == wanted then return true end end
+        return false
+    end
+    local function hasRPM() return hasKind(2) end
+    local function hasWatts() return hasKind(3) end
+    local function custom() return hasKind(1) end
+    local function customSource() return widget.deckMode ~= 8 end
+    local function customPosition() return widget.deckMode ~= 1 and widget.deckMode ~= 8 and custom() end
+    local function meter() return widget.deckMode ~= 8 and widget.bottomDisplay == 2 end
+    local function redZone() return meter() and (custom() or hasRPM() or hasWatts()) end
+    local function logging() return widget.logEnabled end
+    local function alerting() return widget.alarmEnabled end
     cancelAutoLog(widget)
     widget.configPanel = nil
     form.addLine("VoltDeck " .. VERSION)
+    if not currentForm() then return end
     local function group(label)
-        widget.configPanel = form.addExpansionPanel(label)
-        widget.configPanel:open(false)
+        if not currentForm() then return end
+        local panel = form.addExpansionPanel(label)
+        if not currentForm() then return end
+        widget.configPanel = panel
+        panel:open(false)
     end
     local function note(message)
+        if not currentForm() then return end
         local line = form.addLine("", widget.configPanel)
         local ok, width = pcall(form.width)
+        if not currentForm() then return end
         form.addStaticText(line, {x = 10, y = 0, w = ok and width - 20 or 720, h = 30}, message)
     end
-    local function boolean(label, key, alarmReset)
+    local function boolean(label, key, alarmReset, active)
+        if not currentForm() then return end
         local line = form.addLine(label, widget.configPanel)
-        form.addBooleanField(line, nil, function() return widget[key] end,
-            function(value) if not validWidget(widget) then return end; widget[key] = value
+        if not currentForm() then return end
+        local field = form.addBooleanField(line, nil, function() return widget[key] end,
+            function(value) if not currentForm() or (active and not active()) then return end; widget[key] = value
                 if key == "autoLogEnabled" or key == "logEnabled" or key == "preview" then cancelAutoLog(widget) end
                 changed(widget, alarmReset)
+                if currentForm() then refreshFields() end
             end)
+        return bind(field, active)
     end
-    local function sourceField(label, key, alarmReset)
+    local function sourceField(label, key, alarmReset, active)
+        if not currentForm() then return end
         local line = form.addLine(label, widget.configPanel)
-        form.addSourceField(line, nil, function() return widget[key] end,
-            function(value) if not validWidget(widget) then return end; widget[key] = selectedSource(value); changed(widget, alarmReset) end)
+        if not currentForm() then return end
+        local field = form.addSourceField(line, nil, function() return widget[key] end,
+            function(value)
+                if not currentForm() or (active and not active()) then return end
+                local source = selectedSource(value)
+                if not currentForm() or (active and not active()) then return end
+                widget[key] = source; changed(widget, alarmReset)
+                if currentForm() then refreshFields() end
+            end)
+        return bind(field, active)
+    end
+    local function stringField(label, key, dirty, alarmReset, active)
+        if not currentForm() then return end
+        local line = form.addLine(label, widget.configPanel)
+        if not currentForm() then return end
+        local field = form.addTextField(line, nil, function() return widget[key] end,
+            function(value)
+                if not currentForm() or (active and not active()) then return end
+                widget[key] = key == "audioFolder" and normalizeAudioFolder(value) or value or ""
+                if dirty then widget[dirty] = true end
+                changed(widget, alarmReset)
+            end)
+        return bind(field, active)
+    end
+    local function fileField(label, folder, filter, getter, setter, active)
+        if not currentForm() then return end
+        local line = form.addLine(label, widget.configPanel)
+        if not currentForm() then return end
+        local field = form.addFileField(line, nil, folder, filter, getter, function(value)
+            if not currentForm() or (active and not active()) then return end
+            setter(value)
+        end)
+        return bind(field, active)
     end
 
     if widget.configError then note(widget.configError) end
 
     group("Battery")
-    choiceField(widget, "Remaining from", "batteryMethod",
+    choice("Remaining from", "batteryMethod",
         {{"Consumed mAh", 1}, {"% sensor", 2}, {"Voltage estimate", 3}})
-    choiceField(widget, "Battery type", "chemistry", {{"Lipo", 1}, {"HV Lipo", 2}, {"Li-ion", 3}, {"LiFe", 4}})
-    numberField(widget, "Capacity", "capacityMah", 100, 100000, "mAh", 50)
-    numberField(widget, "Cells", "cellCount", 1, 16, nil, 1)
-    choiceField(widget, "mAh display", "mahDisplay", {{"Consumed", 1}, {"Remaining", 2}})
-    note("Default: remaining = capacity - consumed mAh.")
-    note("Counter decrease: unknown until pack loss or confirmation.")
-    note("Menu / Accept battery counter: check charge first.")
-    note("Voltage estimate is approximate, not measured charge.")
+    choice("Battery type", "chemistry", {{"Lipo", 1}, {"LiHV", 2}, {"Li-ion", 3}, {"LiFe", 4}})
+    number("Capacity", "capacityMah", 100, 100000, "mAh", 50)
+    number("Cells", "cellCount", 1, 16, nil, 1)
+    choice("mAh display", "mahDisplay", {{"Consumed", 1}, {"Remaining", 2}})
 
     group("Appearance")
-    choiceField(widget, "Background", "backgroundMode", {{"Radio theme", 1}, {"Black", 2}, {"Custom", 3}})
-    colorField(widget, "Background color", "backgroundColor")
-    colorField(widget, "Accent color", "accentColor")
-    local line = form.addLine("Font file", widget.configPanel)
-    form.addTextField(line, nil, function() return widget.fontPath end,
-        function(value) if not validWidget(widget) then return end; widget.fontPath = value or ""; widget.fontDirty = true; changed(widget) end)
-    note("Blank font uses native ETHOS fonts.")
-    choiceField(widget, "Image source", "imageMode", {{"Selected model", 1}, {"Image file", 2}, {"Hidden", 3}})
-    line = form.addLine("Image file", widget.configPanel)
-    form.addFileField(line, nil, "/bitmaps/models", "image+ext",
+    choice("Background", "backgroundMode", {{"Radio theme", 1}, {"Black", 2}, {"Custom", 3}})
+    color("Background color", "backgroundColor", function() return widget.backgroundMode == 3 end)
+    color("Accent color", "accentColor", function() return widget.backgroundMode ~= 1 end)
+    stringField("Font file", "fontPath", "fontDirty")
+    local line
+    choice("Image source", "imageMode", {{"Selected model", 1}, {"Image file", 2}, {"Hidden", 3}})
+    fileField("Image file", "/bitmaps/models", "image+ext",
         function() return widget.imageName:gsub("^/bitmaps/models/", "") end,
-        function(value) if not validWidget(widget) then return end; widget.imageName = value or ""; widget.imageDirty = true; changed(widget) end)
-    note("PNG: 290x191 recommended; 480x272 / 480x320 OK.")
-    note("Aspect ratio is preserved; maximum 160k pixels.")
+        function(value) widget.imageName = value or ""; widget.imageDirty = true; changed(widget) end,
+        function() return widget.imageMode == 2 end)
 
     group("Battery alert")
     boolean("Battery alert", "alarmEnabled", true)
-    boolean("Alert on estimate", "alarmEstimate", true)
-    numberField(widget, "Repeat", "alertInterval", 1, 600, "s", 1)
-    line = form.addLine("Audio folder", widget.configPanel)
-    form.addTextField(line, nil, function() return widget.audioFolder end,
-        function(value) if not validWidget(widget) then return end; widget.audioFolder = normalizeAudioFolder(value); changed(widget, true) end)
+    boolean("Alert on estimate", "alarmEstimate", true, function() return alerting() and widget.batteryMethod == 3 end)
+    number("Repeat", "alertInterval", 1, 600, "s", 1, alerting)
+    stringField("Audio folder", "audioFolder", nil, true, alerting)
     local pickerFolder = normalizeAudioFolder(widget.audioFolder)
-    line = form.addLine("Alert WAV", widget.configPanel)
-    form.addFileField(line, nil, pickerFolder, "audio+ext", function()
+    fileField("Alert WAV", pickerFolder, "audio+ext", function()
         local prefix = pickerFolder .. "/"
         return widget.alarmSound:sub(1, #prefix) == prefix and widget.alarmSound:sub(#prefix + 1) or widget.alarmSound
-    end, function(value) if not validWidget(widget) then return end; widget.alarmSound = audioPath(pickerFolder, value)
+    end, function(value) widget.alarmSound = audioPath(pickerFolder, value)
         widget.checkedSound = nil
         changed(widget, true)
-    end)
-    note("Alarm at <=30%; invalid WAV uses a tone.")
-    note("Brief recovery does not restart audio cooldown.")
-    note("WAV: PCM 32kHz mono 16-bit; repeat waits for audio.")
-    note("Reopen settings after changing the audio folder.")
+    end, alerting)
 
     group("Telemetry")
-    for _, definition in ipairs(SOURCE_FIELDS) do sourceField(definition.label, definition.key, true) end
-    note("Blank Tx source uses radio battery; RF = dB or %.")
+    for _, definition in ipairs(SOURCE_FIELDS) do
+        sourceField(definition.label, definition.key, true, definition.key == "percentSource"
+            and function() return widget.batteryMethod == 2 end or nil)
+    end
     group("RF signals")
     local rfProfiles = {{"ACCESS / TD / TW", 1}, {"ACCST", 2}, {"Custom", 3}}
-    choiceField(widget, "RF1 profile", "rf1Profile", rfProfiles)
-    choiceField(widget, "RF2 profile", "rf2Profile", rfProfiles)
-    numberField(widget, "RSSI scale min", "signalMinimum", -150, 199, "dB", 1)
-    numberField(widget, "RSSI scale max", "signalMaximum", -149, 200, "dB", 1)
-    numberField(widget, "RF1 low RSSI", "rfWarnDB", -149, 200, "dB", 1)
-    numberField(widget, "RF1 critical RSSI", "rfCriticalDB", -150, 199, "dB", 1)
-    numberField(widget, "RF1 early VFR", "rfWarnPercent", 1, 100, "%", 1)
-    numberField(widget, "RF1 low VFR", "rfCriticalPercent", 0, 99, "%", 1)
-    numberField(widget, "RF2 low RSSI", "rf2WarnDB", -149, 200, "dB", 1)
-    numberField(widget, "RF2 critical RSSI", "rf2CriticalDB", -150, 199, "dB", 1)
-    numberField(widget, "RF2 early VFR", "rf2WarnPercent", 1, 100, "%", 1)
-    numberField(widget, "RF2 low VFR", "rf2CriticalPercent", 0, 99, "%", 1)
-    note("Presets: RSSI 35/32 or 45/42 dB; VFR 95/50%.")
-    note("Editing a limit selects Custom for that RF slot.")
-    note("Presets ignore custom fields; VFR scale is 0-100%.")
-    note("Names/units follow sources, even without live data.")
-    note("Visual profiles do not change native radio alarms.")
+    choice("RF1 profile", "rf1Profile", rfProfiles)
+    choice("RF2 profile", "rf2Profile", rfProfiles)
+    number("RSSI scale min", "signalMinimum", -150, 199, "dB", 1)
+    number("RSSI scale max", "signalMaximum", -149, 200, "dB", 1)
+    number("RF1 low RSSI", "rfWarnDB", -149, 200, "dB", 1, function() return widget.rf1Profile == 3 end)
+    number("RF1 critical RSSI", "rfCriticalDB", -150, 199, "dB", 1, function() return widget.rf1Profile == 3 end)
+    number("RF1 early VFR", "rfWarnPercent", 1, 100, "%", 1, function() return widget.rf1Profile == 3 end)
+    number("RF1 low VFR", "rfCriticalPercent", 0, 99, "%", 1, function() return widget.rf1Profile == 3 end)
+    number("RF2 low RSSI", "rf2WarnDB", -149, 200, "dB", 1, function() return widget.rf2Profile == 3 end)
+    number("RF2 critical RSSI", "rf2CriticalDB", -150, 199, "dB", 1, function() return widget.rf2Profile == 3 end)
+    number("RF2 early VFR", "rf2WarnPercent", 1, 100, "%", 1, function() return widget.rf2Profile == 3 end)
+    number("RF2 low VFR", "rf2CriticalPercent", 0, 99, "%", 1, function() return widget.rf2Profile == 3 end)
 
     group("Lower deck")
-    choiceField(widget, "Show", "deckMode", {{"Custom", 1}, {"RPM", 2}, {"Watts", 3},
+    choice("Show", "deckMode", {{"Only Custom", 1}, {"RPM", 2}, {"Watts", 3},
         {"Cell volts", 4}, {"Voltage estimate", 5}, {"RPM + Watts", 6}, {"RPM + W + cell", 7}, {"Hidden", 8}})
-    choiceField(widget, "Meter style", "bottomDisplay", {{"Numeric", 1}, {"Retro LCD", 2}})
-    sourceField("Custom source", "bottomSource")
-    line = form.addLine("Custom label", widget.configPanel)
-    form.addTextField(line, nil, function() return widget.bottomLabel end,
-        function(value) if not validWidget(widget) then return end; widget.bottomLabel = value or ""; changed(widget) end)
-    numberField(widget, "Custom min", "bottomMinimum", -100000, 999999, nil, 1)
-    numberField(widget, "Custom max", "bottomMaximum", -99999, 1000000, nil, 100)
-    numberField(widget, "Decimals (-1 auto)", "bottomDecimals", -1, 3, nil, 1)
-    numberField(widget, "Red zone", "redZone", 10, 100, "%", 1)
-    numberField(widget, "Watt max", "wattMaximum", 10, 100000, "W", 100)
-    numberField(widget, "Cell max (cV)", "cellMaximum", 200, 500, "cV", 5)
-    note("Watts = pack V x A, electrical input, not shaft power.")
-    note("Cell volts = pack V / cells, not individual cells.")
+    choice("Meter style", "bottomDisplay", {{"Numeric", 1}, {"Retro LCD", 2}}, function() return widget.deckMode ~= 8 end)
+    sourceField("Custom source", "bottomSource", nil, customSource)
+    number("Custom position", "customPosition", 1, 3, nil, 1, customPosition)
+    stringField("Custom label", "bottomLabel", nil, nil, custom)
+    number("Custom min", "bottomMinimum", -100000, 999999, nil, 1, function() return custom() and meter() end)
+    number("Custom max", "bottomMaximum", -99999, 1000000, nil, 100, function() return custom() and meter() end)
+    number("Decimals (-1 auto)", "bottomDecimals", -1, 3, nil, 1, custom)
+    number("Red zone", "redZone", 10, 100, "%", 1, redZone)
+    number("Watt max", "wattMaximum", 10, 100000, "W", 100, function() return hasWatts() and meter() end)
 
     group("Motor / RPM")
-    sourceField("RPM source", "rpmSource")
-    choiceField(widget, "RPM value", "rpmMode", {{"Measured RPM", 1}, {"KV x volts (est.)", 2}})
-    numberField(widget, "Motor KV", "motorKV", 0, 10000, "rpm/V", 10)
-    numberField(widget, "Estimate factor", "loadFactor", 10, 100, "%", 1)
-    choiceField(widget, "RPM scale", "rpmScale", {{"Manual", 1}, {"Full-pack KV", 2}})
-    numberField(widget, "RPM max", "rpmMaximum", 1000, 200000, "rpm", 1000)
-    note("KV x live volts is potential speed, NOT actual RPM.")
-    note("Default 100% = no-load; choose factor from testing.")
-    note("KV scale uses full-pack volts, so sag stays visible.")
+    sourceField("RPM source", "rpmSource", nil, function() return logging() or (hasRPM() and widget.rpmMode == 1) end)
+    choice("RPM value", "rpmMode", {{"Measured RPM", 1}, {"KV x volts (est.)", 2}}, hasRPM)
+    number("Motor KV", "motorKV", 0, 10000, "rpm/V", 10, function() return logging() or (hasRPM() and (widget.rpmMode == 2 or (meter() and widget.rpmScale == 2))) end)
+    number("Estimate factor", "loadFactor", 10, 100, "%", 1, function() return hasRPM() and widget.rpmMode == 2 end)
+    choice("RPM scale", "rpmScale", {{"Manual", 1}, {"Full-pack KV", 2}}, function() return hasRPM() and meter() end)
+    number("RPM max", "rpmMaximum", 1000, 200000, "rpm", 1000, function() return hasRPM() and meter() and (widget.rpmScale == 1 or widget.motorKV <= 0) end)
 
     group("Flight log")
     boolean("Enable log", "logEnabled")
     sourceField("Arm switch", "armSource")
     sourceField("Throttle source", "throttleSource")
     sourceField("Airborne gate", "airborneSource")
-    numberField(widget, "Throttle low (raw)", "throttleMinimum", -2048, 2047, nil, 1)
-    numberField(widget, "Throttle high (raw)", "throttleMaximum", -2047, 2048, nil, 1)
-    numberField(widget, "Flight minimum", "flightMinimum", 60, 3600, "s", 10)
-    numberField(widget, "Throttle gate", "throttleThreshold", 10, 100, "%", 5)
-    numberField(widget, "High throttle", "highThrottleSeconds", 1, 120, "s", 1)
+    number("Throttle low (raw)", "throttleMinimum", -2048, 2047, nil, 1)
+    number("Throttle high (raw)", "throttleMaximum", -2047, 2048, nil, 1)
+    number("Flight minimum", "flightMinimum", 60, 3600, "s", 10, logging)
+    number("Throttle gate", "throttleThreshold", 10, 100, "%", 5, logging)
+    number("High throttle", "highThrottleSeconds", 1, 120, "s", 1, logging)
     -- Keep the checked settings key/order compatible with earlier builds.
-    numberField(widget, "Pack loss delay", "endDelay", 3, 120, "s", 1)
-    boolean("Auto-open log", "autoLogEnabled")
-    numberField(widget, "Extra log delay", "autoLogDelay", 0, 120, "s", 1)
-    note("Extra delay after Pack loss delay; qualified flights only.")
-    sourceField("RF graph 1", "graph1Source")
-    sourceField("RF graph 2", "graph2Source")
-    note("Arm + >=60s + >=50% throttle for >=5s by default.")
-    note("--- = no extra gate; Always on also passes.")
-    note("Motor disarm pauses; one count per pack session.")
-    note("Only sustained pack-voltage loss ends a session.")
-    note("Last log stays until a new flight qualifies.")
-    note("Long RF loss can look like a disconnected pack.")
-    note("Long armed bench runs can count: use airborne gate.")
-    note("Use actual API endpoints; UI % may use another scale.")
-    note("Widget menu / Flight diagnostics shows raw and gates.")
-    note("Blank graph sources use RF1/RF2; VFR is % not RSSI.")
-    note("Graph limits are visual, not radio alarm settings.")
-    note("Only counter persists; last-flight graphs stay in RAM.")
+    number("Pack loss delay", "endDelay", 3, 120, "s", 1)
+    boolean("Auto-open log", "autoLogEnabled", nil, logging)
+    number("Extra log delay", "autoLogDelay", 0, 120, "s", 1, function() return logging() and widget.autoLogEnabled end)
+    sourceField("RF graph 1", "graph1Source", nil, logging)
+    sourceField("RF graph 2", "graph2Source", nil, logging)
+    if not currentForm() then return end
     line = form.addLine("Reset counter", widget.configPanel)
-    form.addButton(line, nil, {text = "Reset...", press = function()
-        if not validWidget(widget) then return end
-        local session = widget.flightSession
-        if not session or session.current or switchOn(widget.armSource) then
+    if not currentForm() then return end
+    bind(form.addButton(line, nil, {text = "Reset...", press = function()
+        if not currentForm() or not logging() then return end
+        local session, armSource = widget.flightSession, widget.armSource
+        local armed = switchOn(armSource)
+        if not currentForm() or not logging() or widget.flightSession ~= session or widget.armSource ~= armSource then return end
+        if not session or session.current or armed then
             form.openDialog({title = "Flight counter", message = "Enable log, disarm and disconnect pack before reset.",
                 buttons = {{label = "OK", action = function() return true end}}})
             return
@@ -2082,19 +2569,22 @@ local function configure(widget)
         form.openDialog({title = "Reset flight count?", message = widget.data.modelName or "Current model",
             buttons = {{label = "Cancel", action = function() return true end},
                 {label = "Reset", action = function()
-                    if not validWidget(widget) or modelKey() ~= key or switchOn(widget.armSource) or session.current then return true end
+                    if not currentForm() or not logging() or widget.flightSession ~= session then return true end
+                    local armSource = widget.armSource
+                    local armed, currentKey = switchOn(armSource), modelKey()
+                    if not currentForm() or not logging() or widget.flightSession ~= session or widget.armSource ~= armSource
+                        or currentKey ~= key or armed or session.current then return true end
                     session.count, session.last = 0, nil
                     session.pending, session.attempts, session.retryAt = true, 0, 0
                     session.revision = session.revision + 1
                     widget.refresh = true
                     return true
                 end}}})
-    end})
+    end}), logging)
 
     group("Preview")
     boolean("Preview", "preview")
-    note("Preview never counts flights or plays alerts.")
-    widget.configPanel = nil
+    if currentForm() then refreshFields(); widget.configPanel = nil end
 end
 
 local function destroy(widget)
@@ -2105,6 +2595,9 @@ local function destroy(widget)
     widget.checkedSound, widget.soundDuration = nil, nil
     widget.rfGraphs, widget.rfGraphWork = nil, nil
     widget.metadata, widget.batteryStates, widget.alertStates = nil, nil, nil
+    widget.packCheckState = nil
+    widget.pendingBatteryMessage = nil
+    widget.focusRepaintAt = nil
     if FLIGHT_SESSION and FLIGHT_SESSION.owner == widget then
         FLIGHT_SESSION.owner, FLIGHT_SESSION.lastClock = nil, nil
         if FLIGHT_SESSION.current then FLIGHT_SESSION.current.running = false end

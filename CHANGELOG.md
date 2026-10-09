@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.10-v6 - release, 2026-10-09
+
+- Add a Custom source alongside lower-deck presets, with position 1–3 and an Only Custom option; Custom replaces the cell row when all three rows are occupied.
+- Give average cell voltage a battery-specific scale and low/high voltage colours, retaining the existing voltage-to-percentage calculation.
+- Rename HV Lipo to LiHV and use its 4.35 V upper cell boundary throughout the cell display.
+- Keep configuration fields inactive when the selected method or display does not use them, while preserving their saved values.
+- Move setup explanations from the radio form to complete, illustrated guides in menu order, in English and Norwegian.
+- Cancel a flight-counter reset if the widget, selected controls or model change during confirmation.
+- Check consumed-mAh remaining against a stable low-load voltage reference before showing charge: automatically accept up to 10 percentage points difference, require confirmation above 10 through 20, and block larger differences. LiFe uses manual charge/counter confirmation.
+- Require a new check after startup, long pack-telemetry loss, counter resets or battery setup changes; retain qualification during ordinary flight and voltage sag.
+- Require valid live readings and the same battery setup when accepting a consumption counter.
+- Renew ETHOS focus while the selected widget is visible, retaining the radio's standard menus.
+
 ## 2026.10-v5 - release, 2026-10-07
 
 - Fix an intermittent source-name error while editing widget settings.
